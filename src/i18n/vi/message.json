@@ -1,0 +1,21 @@
+{
+  "HELLO_WORLD": "Xin chào everyone ♥️",
+  "CREATE_SUCCESS": "Tạo mới thành công",
+  "UPDATE_SUCCESS": "Cập nhật thành công",
+  "DELETE_SUCCESS": "Xóa thành công",
+  "UNLOCK_SUCCESS": "Mở khoá thành công",
+  "LOCK_SUCCESS": "Khoá thành công",
+  "SUCCESS": "Thành công",
+  "REGISTER_SUCCESS": "Đăng ký tài khoản thành công",
+  "LOGIN_SUCCESS": "Đăng nhập thành công",
+  "CHANGE_PASSWORD_SUCCESS": "Đổi mật khẩu thành công",
+  "ORDER_SUCCESS": "Đặt hàng thành công",
+  "SET_ADDRESS_DEFAULT_SUCCESS": "Đặt địa chỉ mặc định thành công",
+  "ENABLE_2FA_SUCCESS": "Bật xác thực 2 yếu tố thành công",
+  "CHANGE_2FA_SECRET_SUCCESS": "Đổi mã xác thực 2 yếu tố thành công",
+  "UPLOAD_SUCCESS": "Tải lên thành công",
+  "NEW_PASSWORD_SENT_TO_EMAIL": "Mật khẩu mới đã được gửi đến email của bạn",
+  "PAYMENT_SUCCESS": "Thanh toán thành công",
+  "DISABLE_2FA_SUCCESS": "Tắt xác thực 2 yếu tố thành công",
+  "CREATE_DEPOSIT_REQUEST_SUCCESS": "Tạo yêu cầu nạp tiền thành công"
+}

@@ -1,0 +1,11 @@
+{
+  "HELLO_WORLD": "Hello everyone ♥️",
+  "CREATE_SUCCESS": "Created successfully",
+  "UPDATE_SUCCESS": "Updated successfully",
+  "DELETE_SUCCESS": "Deleted successfully",
+  "UNLOCK_SUCCESS": "Unlocked successfully",
+  "LOCK_SUCCESS": "Locked successfully",
+  "SUCCESS": "Success",
+  "REGISTER_SUCCESS": "Registered successfully",
+  "LOGIN_SUCCESS": "Logged in successfully"
+}

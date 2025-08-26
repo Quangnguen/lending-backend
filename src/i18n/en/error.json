@@ -1,0 +1,8 @@
+{
+  "EMAIL_EXIST": "Email already exist",
+  "NOT_FOUND": "Not found",
+  "EMAIL_OR_PASSWORD_INVALID": "Email or password is invalid",
+  "ACCOUNT_IS_LOCKED": "Account is locked, please contact your administrator",
+  "TOO_MANY_REQUEST": "Too many request, please try again later",
+  "DEPOSIT_RATE_LIMIT_EXCEEDED": "You have created too many deposit requests. Please try again after {minutes} minutes"
+}
