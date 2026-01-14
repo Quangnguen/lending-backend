@@ -14,7 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { UserService } from './user.service';
 import { mergePayload } from '@utils/common';
-import { USER_ROLE_ENUM } from './user.constant';
+import { ROLE_ENUM } from '@constant/p2p-lending.enum';
 import { RoleGuard } from '@core/guards/role.guard';
 import { Roles } from '@core/decorators/roles.decorator';
 import { IdParamDto } from '@core/dto/param-id.request.dto';
@@ -29,7 +29,7 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Get('/')
   @ApiOperation({
     tags: ['Users'],
@@ -51,7 +51,7 @@ export class UserController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Post('/')
   @ApiOperation({
     tags: ['Users'],
@@ -73,7 +73,7 @@ export class UserController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Put('/:id')
   @ApiOperation({
     tags: ['Users'],
@@ -98,7 +98,7 @@ export class UserController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Delete('/:id')
   @ApiOperation({
     tags: ['Users'],
@@ -120,51 +120,51 @@ export class UserController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
-  @Put('/:id/lock')
+  @Roles(ROLE_ENUM.ADMIN)
+  @Put('/:id/suspend')
   @ApiOperation({
     tags: ['Users'],
-    summary: 'Khóa tài khoản người dùng',
-    description: 'Khóa tài khoản người dùng',
+    summary: 'Tạm ngưng tài khoản người dùng',
+    description: 'Tạm ngưng tài khoản người dùng',
   })
   @ApiResponse({
     status: 200,
     description: 'Success',
   })
-  async lock(@Param() param: IdParamDto) {
+  async suspend(@Param() param: IdParamDto) {
     const { request, responseError } = param;
 
     if (!isEmpty(responseError)) {
       return responseError;
     }
 
-    return await this.userService.lock(request);
+    return await this.userService.suspend(request);
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
-  @Put('/:id/unlock')
+  @Roles(ROLE_ENUM.ADMIN)
+  @Put('/:id/activate')
   @ApiOperation({
     tags: ['Users'],
-    summary: 'Mở khóa tài khoản người dùng',
-    description: 'Mở khóa tài khoản người dùng',
+    summary: 'Kích hoạt lại tài khoản người dùng',
+    description: 'Kích hoạt lại tài khoản người dùng',
   })
   @ApiResponse({
     status: 200,
     description: 'Success',
   })
-  async unlock(@Param() param: IdParamDto) {
+  async activate(@Param() param: IdParamDto) {
     const { request, responseError } = param;
 
     if (!isEmpty(responseError)) {
       return responseError;
     }
 
-    return await this.userService.unlock(request);
+    return await this.userService.activate(request);
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Get('/:id')
   @ApiOperation({
     tags: ['Users'],
@@ -175,7 +175,7 @@ export class UserController {
     status: 200,
     description: 'Success',
   })
-  async detail(@Param() param: GetDetailUserRequestDto) {
+  async getDetail(@Param() param: GetDetailUserRequestDto) {
     const { request, responseError } = param;
 
     if (!isEmpty(responseError)) {

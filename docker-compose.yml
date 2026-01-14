@@ -1,15 +1,15 @@
 version: "3.9"
 
 services:
-  mongodb:
-    image: mongo:6.0
-    container_name: my-mongo
-    restart: always
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    command: ["mongod", "--bind_ip_all", "--noauth"]
+  # mongodb:
+  #   image: mongo:6.0
+  #   container_name: my-mongo
+  #   restart: always
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongo_data:/data/db
+  #   command: ["mongod", "--bind_ip_all", "--noauth"]
 
   redis:
     image: redis:7.2
@@ -22,7 +22,7 @@ services:
     command: ["redis-server", "--appendonly", "yes", "--protected-mode", "no"]
 
 volumes:
-  mongo_data:
+  # mongo_data:
   redis_data:
 
 networks:

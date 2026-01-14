@@ -8,17 +8,17 @@ import {
 } from 'class-validator';
 
 import { BaseDto } from '@core/dto/base.request.dto';
-import { USER_GENDER_ENUM } from '@components/user/user.constant';
+import { GENDER_ENUM } from '@constant/p2p-lending.enum';
 
 export class UpdateMeRequestDto extends BaseDto {
   @IsNotEmpty()
   @IsString()
-  fullname: string;
+  fullName: string;
 
   @IsNotEmpty()
   @IsString()
   @IsUrl()
-  avatar: string;
+  avatarUrl: string;
 
   @Length(10)
   @IsString()
@@ -26,6 +26,6 @@ export class UpdateMeRequestDto extends BaseDto {
   phone: string;
 
   @IsNotEmpty()
-  @IsEnum(USER_GENDER_ENUM)
-  gender: USER_GENDER_ENUM;
+  @IsEnum(GENDER_ENUM)
+  gender: GENDER_ENUM;
 }

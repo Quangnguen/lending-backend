@@ -23,11 +23,11 @@ class EnvironmentVariablesValidator {
   @IsString()
   TWO_2FA_TOKEN_EXPIRES_IN: string;
 
-  @IsString()
-  CAPTCHA_SECRET: string;
+  // @IsString()
+  // CAPTCHA_SECRET: string;
 
-  @IsString()
-  CAPTCHA_EXPIRES_IN: string;
+  // @IsString()
+  // CAPTCHA_EXPIRES_IN: string;
 }
 
 export default registerAs<AuthConfig>('auth', () => {
@@ -40,7 +40,7 @@ export default registerAs<AuthConfig>('auth', () => {
     refreshExpires: process.env.AUTH_REFRESH_TOKEN_EXPIRES_IN,
     two2FASecret: process.env.TWO_2FA_SECRET,
     two2FAExpires: process.env.TWO_2FA_TOKEN_EXPIRES_IN,
-    captchaSecret: process.env.CAPTCHA_SECRET,
-    captchaExpires: (Number(process.env.CAPTCHA_EXPIRES_IN) || 30) * 1000, // default 30s
+    // captchaSecret: process.env.CAPTCHA_SECRET,
+    // captchaExpires: (Number(process.env.CAPTCHA_EXPIRES_IN) || 30) * 1000, // default 30s
   };
 });

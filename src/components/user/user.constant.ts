@@ -1,3 +1,5 @@
+export { GENDER_ENUM, ROLE_ENUM } from '@constant/p2p-lending.enum';
+
 export enum USER_ROLE_ENUM {
   USER,
   OWNER,

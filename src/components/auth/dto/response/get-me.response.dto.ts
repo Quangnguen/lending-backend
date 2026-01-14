@@ -6,7 +6,7 @@ import { BaseResponseDto } from '@core/dto/base.response.dto';
 export class GetMeResponseDto extends BaseResponseDto {
   @ApiProperty()
   @Expose()
-  fullname: string;
+  fullName: string;
 
   @ApiProperty()
   @Expose()
@@ -18,29 +18,41 @@ export class GetMeResponseDto extends BaseResponseDto {
 
   @ApiProperty()
   @Expose()
-  role: number;
+  role: string;
 
   @ApiProperty()
   @Expose()
-  avatar: string;
+  avatarUrl: string;
 
   @ApiProperty()
   @Expose()
-  isLocked: number;
+  status: string;
 
   @ApiProperty()
   @Expose()
-  is2FA: number;
+  gender: string;
 
   @ApiProperty()
   @Expose()
-  gender: number;
+  balance: number;
 
   @ApiProperty()
   @Expose()
-  twoFactorSecret: string;
+  creditScore: number;
 
   @ApiProperty()
   @Expose()
-  accountBalance: number;
+  reputationScore: number;
+
+  @ApiProperty()
+  @Expose()
+  isVerified: boolean;
+
+  @ApiProperty()
+  @Expose()
+  kycStatus: string;
+
+  @ApiProperty()
+  @Expose()
+  walletAddress: string;
 }

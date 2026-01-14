@@ -18,7 +18,7 @@ import { RoleGuard } from '@core/guards/role.guard';
 import { Roles } from '@core/decorators/roles.decorator';
 import { Public } from '@core/decorators/public.decorator';
 import { IdParamDto } from '@core/dto/param-id.request.dto';
-import { USER_ROLE_ENUM } from '@components/user/user.constant';
+import { ROLE_ENUM } from '@components/user/user.constant';
 import { CreateContactRequestDto } from './dto/request/create-contact.request.dto';
 import { GetListContactRequestDto } from './dto/request/get-list-contact.request.dto';
 import { ResponseContactRequestDto } from './dto/request/response-contact.request.dto';
@@ -30,7 +30,7 @@ export class ContactController {
   constructor(private readonly contactService: ContactService) {}
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Get('/')
   @ApiOperation({
     tags: ['Contacts'],
@@ -73,7 +73,7 @@ export class ContactController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Delete('/:id')
   @ApiOperation({
     tags: ['Contacts'],
@@ -95,7 +95,7 @@ export class ContactController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Get('/:id')
   @ApiOperation({
     tags: ['Contacts'],
@@ -117,7 +117,7 @@ export class ContactController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Put('/:id/response')
   @ApiOperation({
     tags: ['Contacts'],

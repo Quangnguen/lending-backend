@@ -8,10 +8,7 @@ import {
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-import {
-  USER_ROLE_ENUM,
-  USER_GENDER_ENUM,
-} from '@components/user/user.constant';
+import { GENDER_ENUM, ROLE_ENUM } from '@constant/p2p-lending.enum';
 import { BaseDto } from '@core/dto/base.request.dto';
 
 export class UpdateUserRequestDto extends BaseDto {
@@ -23,22 +20,22 @@ export class UpdateUserRequestDto extends BaseDto {
   @IsNotEmpty()
   @IsString()
   @MaxLength(50)
-  fullname: string;
+  fullName: string;
 
   @ApiProperty({ description: 'email', example: 'kamil@mysliwiec' })
   @IsNotEmpty()
   @IsString()
   email: string;
 
-  @ApiProperty({ description: 'role', example: 1 })
+  @ApiProperty({ description: 'role', example: 'user' })
   @IsNotEmpty()
-  @IsEnum(USER_ROLE_ENUM)
-  role: USER_ROLE_ENUM;
+  @IsEnum(ROLE_ENUM)
+  role: ROLE_ENUM;
 
-  @ApiProperty({ description: 'gender', example: 1 })
+  @ApiProperty({ description: 'gender', example: 'male' })
   @IsNotEmpty()
-  @IsEnum(USER_GENDER_ENUM)
-  gender: USER_GENDER_ENUM;
+  @IsEnum(GENDER_ENUM)
+  gender: GENDER_ENUM;
 
   @ApiProperty({ description: 'phone', example: '0123456789' })
   @Length(10)

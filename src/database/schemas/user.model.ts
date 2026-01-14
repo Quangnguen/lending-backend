@@ -2,13 +2,14 @@ import * as bcrypt from 'bcrypt';
 import * as mongoose from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
-import {
-  USER_ROLE_ENUM,
-  USER_LOCKED_ENUM,
-  USER_GENDER_ENUM,
-  SALT_ROUNDS_PASSWORD,
-} from '@components/user/user.constant';
+import { SALT_ROUNDS_PASSWORD } from '@components/user/user.constant';
 import { BaseModel } from '@core/schema/base.model';
+import {
+  KYC_STATUS_ENUM,
+  USER_STATUS_ENUM,
+  GENDER_ENUM,
+  ROLE_ENUM,
+} from '@constant/p2p-lending.enum';
 
 @Schema({
   timestamps: true,
@@ -16,94 +17,181 @@ import { BaseModel } from '@core/schema/base.model';
   collation: { locale: 'vi' },
 })
 export class User extends BaseModel {
+  // ==================== BASIC INFO ====================
   @Prop({
     type: String,
     index: true,
     unique: true,
     required: true,
+    maxlength: 255,
   })
   email: string;
 
   @Prop({
     type: String,
-    required: true,
+    unique: true,
+    sparse: true,
+    maxlength: 20,
   })
-  fullname: string;
+  phone: string;
+
+  @Prop({
+    type: String,
+    required: true,
+    maxlength: 255,
+  })
+  passwordHash: string;
+
+  @Prop({
+    type: String,
+    required: true,
+    maxlength: 255,
+  })
+  fullName: string;
 
   @Prop({
     type: String,
     default:
-      'https://file.maplife.com/uploads/1743488711346-avatar-default.jpg',
+      'https://i.pinimg.com/736x/cd/74/c6/cd74c6ecffb83116692ca51da358284e.jpg',
   })
-  avatar: string;
+  avatarUrl: string;
+
+  @Prop({ type: Date })
+  dateOfBirth: Date;
 
   @Prop({
     type: String,
-    required: true,
+    enum: Object.values(GENDER_ENUM),
   })
-  password: string;
+  gender: GENDER_ENUM;
 
-  @Prop({
-    type: Number,
-    enum: USER_ROLE_ENUM,
-    default: USER_ROLE_ENUM.USER,
-  })
-  role: USER_ROLE_ENUM;
+  @Prop({ type: String })
+  address: string;
 
-  @Prop({
-    type: Number,
-    enum: USER_LOCKED_ENUM,
-    default: USER_LOCKED_ENUM.UNLOCKED,
-  })
-  isLocked: USER_LOCKED_ENUM;
+  @Prop({ type: String, maxlength: 100 })
+  city: string;
 
+  @Prop({ type: String, maxlength: 100, default: 'Vietnam' })
+  country: string;
+
+  // ==================== KYC - Identity Verification ====================
   @Prop({
-    type: Number,
-    enum: USER_GENDER_ENUM,
-    default: USER_GENDER_ENUM.FEMALE,
+    type: String,
+    unique: true,
+    sparse: true,
+    maxlength: 20,
   })
-  gender: USER_GENDER_ENUM;
+  idCardNumber: string;
+
+  @Prop({ type: String })
+  idCardFrontUrl: string;
+
+  @Prop({ type: String })
+  idCardBackUrl: string;
+
+  @Prop({ type: String })
+  selfieUrl: string;
 
   @Prop({
     type: String,
-    required: false,
+    enum: Object.values(KYC_STATUS_ENUM),
+    default: KYC_STATUS_ENUM.PENDING,
   })
-  phone?: string;
+  kycStatus: KYC_STATUS_ENUM;
+
+  @Prop({ type: Date })
+  kycVerifiedAt: Date;
+
+  @Prop({ type: String })
+  kycRejectionReason: string;
+
+  // ==================== Wallet & Balance ====================
+  @Prop({
+    type: String,
+    maxlength: 42,
+  })
+  walletAddress: string; // Ethereum address
 
   @Prop({
-    type: Number,
+    type: mongoose.Schema.Types.Decimal128,
     default: 0,
+    get: (v: mongoose.Types.Decimal128) => parseFloat(v?.toString() || '0'),
   })
-  accountBalance: number;
+  balance: number;
+
+  // ==================== Reputation ====================
+  @Prop({ type: Number, default: 500, min: 300, max: 850 })
+  creditScore: number; // 300-850
+
+  @Prop({ type: Number, default: 0 })
+  reputationScore: number;
 
   @Prop({
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: false,
+    type: mongoose.Schema.Types.Decimal128,
+    default: 0,
+    get: (v: mongoose.Types.Decimal128) => parseFloat(v?.toString() || '0'),
   })
-  createdBy: string;
+  totalBorrowed: number;
 
   @Prop({
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: false,
+    type: mongoose.Schema.Types.Decimal128,
+    default: 0,
+    get: (v: mongoose.Types.Decimal128) => parseFloat(v?.toString() || '0'),
   })
-  deletedBy: string;
+  totalLent: number;
+
+  @Prop({ type: Number, default: 0 })
+  successfulLoans: number;
+
+  @Prop({ type: Number, default: 0 })
+  defaultedLoans: number;
+
+  // ==================== Status ====================
+  @Prop({
+    type: String,
+    enum: Object.values(ROLE_ENUM),
+    default: ROLE_ENUM.USER,
+  })
+  role: ROLE_ENUM;
 
   @Prop({
     type: String,
-    required: false,
+    enum: Object.values(USER_STATUS_ENUM),
+    default: USER_STATUS_ENUM.ACTIVE,
   })
-  bio: string;
+  status: USER_STATUS_ENUM;
+
+  @Prop({ type: Boolean, default: false })
+  isVerified: boolean;
+
+  // ==================== References ====================
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  })
+  createdBy: mongoose.Types.ObjectId;
+
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  })
+  deletedBy: mongoose.Types.ObjectId;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
-
 export type UserDocument = User & mongoose.Document;
 
+// Hash password before save
 UserSchema.pre<User>('save', async function (next) {
-  if (this.isModified('password')) {
-    this.password = await bcrypt.hash(this.password, SALT_ROUNDS_PASSWORD);
+  if (this.isModified('passwordHash')) {
+    this.passwordHash = await bcrypt.hash(
+      this.passwordHash,
+      SALT_ROUNDS_PASSWORD,
+    );
   }
   next();
 });
+
+// Enable getters for Decimal128
+UserSchema.set('toJSON', { getters: true });
+UserSchema.set('toObject', { getters: true });

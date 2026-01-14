@@ -6,7 +6,7 @@ import { BaseResponseDto } from '@core/dto/base.response.dto';
 export class GetUserDetailResponseDto extends BaseResponseDto {
   @ApiProperty()
   @Expose()
-  fullname: string;
+  fullName: string;
 
   @ApiProperty()
   @Expose()
@@ -18,29 +18,73 @@ export class GetUserDetailResponseDto extends BaseResponseDto {
 
   @ApiProperty()
   @Expose()
-  role: number;
+  role: string;
 
   @ApiProperty()
   @Expose()
-  is2FA: number;
+  status: string;
 
   @ApiProperty()
   @Expose()
-  isLocked: number;
+  gender: string;
 
   @ApiProperty()
   @Expose()
-  gender: number;
+  avatarUrl: string;
 
   @ApiProperty()
   @Expose()
-  avatar: string;
+  dateOfBirth: Date;
 
   @ApiProperty()
   @Expose()
-  twoFactorSecret: string;
+  address: string;
 
   @ApiProperty()
   @Expose()
-  accountBalance: number;
+  city: string;
+
+  @ApiProperty()
+  @Expose()
+  country: string;
+
+  @ApiProperty()
+  @Expose()
+  balance: number;
+
+  @ApiProperty()
+  @Expose()
+  creditScore: number;
+
+  @ApiProperty()
+  @Expose()
+  reputationScore: number;
+
+  @ApiProperty()
+  @Expose()
+  totalBorrowed: number;
+
+  @ApiProperty()
+  @Expose()
+  totalLent: number;
+
+  @ApiProperty()
+  @Expose()
+  successfulLoans: number;
+
+  @ApiProperty()
+  @Expose()
+  defaultedLoans: number;
+
+  @ApiProperty()
+  @Expose()
+  isVerified: boolean;
+
+  @ApiProperty()
+  @Expose()
+  kycStatus: string;
+
+  @ApiProperty()
+  @Expose()
+  walletAddress: string;
 }

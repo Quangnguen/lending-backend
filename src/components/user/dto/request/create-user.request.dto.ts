@@ -9,10 +9,7 @@ import {
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-import {
-  USER_ROLE_ENUM,
-  USER_GENDER_ENUM,
-} from '@components/user/user.constant';
+import { GENDER_ENUM, ROLE_ENUM } from '@constant/p2p-lending.enum';
 import { BaseDto } from '@core/dto/base.request.dto';
 
 export class CreateUserRequestDto extends BaseDto {
@@ -20,7 +17,7 @@ export class CreateUserRequestDto extends BaseDto {
   @IsNotEmpty()
   @IsString()
   @MaxLength(50)
-  fullname: string;
+  fullName: string;
 
   @ApiProperty({ description: 'email', example: 'kamil@mysliwiec' })
   @IsNotEmpty()
@@ -31,27 +28,76 @@ export class CreateUserRequestDto extends BaseDto {
   @IsNotEmpty()
   @IsString()
   @MaxLength(50)
-  password: string;
+  passwordHash: string;
 
-  @ApiProperty({ description: 'role', example: 1 })
-  @IsEnum(USER_ROLE_ENUM)
+  @ApiProperty({ description: 'role', example: 'user' })
+  @IsEnum(ROLE_ENUM)
   @IsOptional()
-  role?: USER_ROLE_ENUM;
+  role?: ROLE_ENUM;
 
-  @ApiProperty({ description: 'gender', example: 1 })
-  @IsEnum(USER_GENDER_ENUM)
+  @ApiProperty({ description: 'gender', example: 'male' })
+  @IsEnum(GENDER_ENUM)
   @IsOptional()
-  gender?: USER_GENDER_ENUM;
+  gender?: GENDER_ENUM;
 
   @ApiProperty({ description: 'avatar', example: 'https://...' })
   @IsOptional()
   @IsString()
   @IsUrl()
-  avatar?: string;
+  avatarUrl?: string;
 
   @ApiProperty({ description: 'phone', example: '0123456789' })
   @Length(10)
   @IsString()
   @IsOptional()
   phone?: string;
+
+  @ApiProperty({ description: 'dateOfBirth' })
+  @IsOptional()
+  dateOfBirth?: Date;
+
+  @ApiProperty({ description: 'address' })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiProperty({ description: 'city' })
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @ApiProperty({ description: 'country' })
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  // KYC
+  @IsOptional()
+  @IsString()
+  idCardNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  idCardFrontUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  idCardBackUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  selfieUrl?: string;
+
+  // Wallet
+  @IsOptional()
+  @IsString()
+  walletAddress?: string;
+
+  // Status
+  @IsOptional()
+  status?: string;
+
+  // Reference
+  @IsOptional()
+  createdBy?: any;
 }

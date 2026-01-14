@@ -13,12 +13,12 @@ import {
   KEY_PASSWORD_RESET,
   PASSWORD_RESET_EXPIRES,
 } from './auth.constant';
+import { SALT_ROUNDS_PASSWORD } from '@components/user/user.constant';
 import {
-  USER_ROLE_ENUM,
-  USER_LOCKED_ENUM,
-  USER_GENDER_ENUM,
-  SALT_ROUNDS_PASSWORD,
-} from '@components/user/user.constant';
+  ROLE_ENUM,
+  GENDER_ENUM,
+  USER_STATUS_ENUM,
+} from '@constant/p2p-lending.enum';
 import { EVENT_ENUM } from '@constant/event.enum';
 import { AllConfigType } from '@config/config.type';
 import { User } from '@database/schemas/user.model';
@@ -62,7 +62,7 @@ export class AuthService {
   ) {}
 
   async register(request: RegisterUserRequestDto) {
-    const { email, captchaToken } = request;
+    const { email } = request;
 
     const emailExist = await this.userRepository.findOne({ email });
     if (!isEmpty(emailExist)) {
@@ -75,10 +75,10 @@ export class AuthService {
     const { fullname, password } = request;
     const newEntity = this.userRepository.createEntity({
       email,
-      fullname,
-      password,
-      role: USER_ROLE_ENUM.USER,
-      gender: USER_GENDER_ENUM.FEMALE,
+      fullName: fullname,
+      passwordHash: password,
+      role: ROLE_ENUM.USER,
+      gender: GENDER_ENUM.FEMALE,
     } as CreateUserRequestDto);
 
     await newEntity.save();
@@ -100,14 +100,22 @@ export class AuthService {
       );
     }
 
-    if (user.isLocked === USER_LOCKED_ENUM.LOCKED) {
+    // Check if user is banned or suspended
+    if (user.status === USER_STATUS_ENUM.BANNED) {
       throw new BusinessException(
-        this.i18n.translate('error.ACCOUNT_IS_LOCKED'),
+        this.i18n.translate('error.ACCOUNT_IS_BANNED'),
         ResponseCodeEnum.BAD_REQUEST,
       );
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (user.status === USER_STATUS_ENUM.SUSPENDED) {
+      throw new BusinessException(
+        this.i18n.translate('error.ACCOUNT_IS_SUSPENDED'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       throw new BusinessException(
         this.i18n.translate('error.EMAIL_OR_PASSWORD_INVALID'),
@@ -147,7 +155,7 @@ export class AuthService {
   async changePassword(request: ChangePasswordRequestDto) {
     const { user, oldPassword, newPassword } = request;
 
-    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
     if (!isMatch) {
       throw new BusinessException(
         this.i18n.translate('error.OLD_PASSWORD_INVALID'),
@@ -155,7 +163,7 @@ export class AuthService {
       );
     }
 
-    user.password = newPassword;
+    user.passwordHash = newPassword;
     await user.save();
 
     return new ResponseBuilder()
@@ -219,8 +227,8 @@ export class AuthService {
           id: user.id,
           email: user.email,
           role: user.role,
-          isAdmin: user.role === USER_ROLE_ENUM.ADMIN,
-        } as IJwtPayload,
+          isAdmin: user.role === ROLE_ENUM.ADMIN,
+        } as unknown as IJwtPayload,
         {
           secret: accessSecret,
           expiresIn: accessTokenExpiresIn,
@@ -230,8 +238,8 @@ export class AuthService {
         {
           id: user.id,
           role: user.role,
-          isAdmin: user.role === USER_ROLE_ENUM.ADMIN,
-        } as IJwtPayload,
+          isAdmin: user.role === ROLE_ENUM.ADMIN,
+        } as unknown as IJwtPayload,
         {
           secret: refreshSecret,
           expiresIn: refreshTokenExpiresIn,
@@ -318,8 +326,8 @@ export class AuthService {
           id: user.id,
           role: user.role,
           email: user.email,
-          isAdmin: user.role === USER_ROLE_ENUM.ADMIN,
-        } as IJwtPayload,
+          isAdmin: user.role === ROLE_ENUM.ADMIN,
+        } as unknown as IJwtPayload,
         {
           secret: accessSecret,
           expiresIn: accessTokenExpiresIn,
@@ -329,8 +337,8 @@ export class AuthService {
         {
           id: user.id,
           role: user.role,
-          isAdmin: user.role === USER_ROLE_ENUM.ADMIN,
-        } as IJwtPayload,
+          isAdmin: user.role === ROLE_ENUM.ADMIN,
+        } as unknown as IJwtPayload,
         {
           secret: refreshSecret,
           expiresIn: refreshTokenExpiresIn,

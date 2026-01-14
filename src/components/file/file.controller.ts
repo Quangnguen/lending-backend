@@ -22,7 +22,7 @@ import { Roles } from '@core/decorators/roles.decorator';
 import { IdParamDto } from '@core/dto/param-id.request.dto';
 import { FILE_CONST } from '@components/file/file.constant';
 import { ResponseCodeEnum } from '@constant/response-code.enum';
-import { USER_ROLE_ENUM } from '@components/user/user.constant';
+import { ROLE_ENUM } from '@components/user/user.constant';
 import { BusinessException } from '@core/exception-filter/business-exception.filter';
 import { DeleteMultipleFileRequestDto } from '@components/file/dto/request/delete-multiple-file.request.dto';
 
@@ -73,7 +73,7 @@ export class FileController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Post('upload/multiple')
   @UseInterceptors(FilesInterceptor('files'))
   async uploadMultiple(
@@ -103,7 +103,7 @@ export class FileController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Delete('/:id')
   @ApiOperation({
     tags: ['Category'],
@@ -125,7 +125,7 @@ export class FileController {
   }
 
   @UseGuards(RoleGuard)
-  @Roles(USER_ROLE_ENUM.ADMIN)
+  @Roles(ROLE_ENUM.ADMIN)
   @Delete('/delete-multiple')
   @ApiOperation({
     tags: ['File'],

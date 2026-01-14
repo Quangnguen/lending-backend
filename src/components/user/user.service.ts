@@ -1,5 +1,6 @@
 import { isEmpty } from 'lodash';
 import { I18nService } from 'nestjs-i18n';
+import { Types } from 'mongoose';
 import { plainToInstance } from 'class-transformer';
 import { Inject, Injectable } from '@nestjs/common';
 
@@ -7,7 +8,7 @@ import { ResponseBuilder } from '@utils/response-builder';
 import { IdParamDto } from '@core/dto/param-id.request.dto';
 import { BaseResponseDto } from '@core/dto/base.response.dto';
 import { ResponseCodeEnum } from '@constant/response-code.enum';
-import { USER_LOCKED_ENUM, USER_ROLE_ENUM } from './user.constant';
+import { ROLE_ENUM, USER_STATUS_ENUM } from '@constant/p2p-lending.enum';
 import { CreateUserRequestDto } from './dto/request/create-user.request.dto';
 import { UpdateUserRequestDto } from './dto/request/update-user.request.dto';
 import { GetListUserRequestDto } from './dto/request/get-list-user.request.dto';
@@ -138,7 +139,7 @@ export class UserService {
       );
     }
 
-    user.deletedBy = userId;
+    user.deletedBy = new Types.ObjectId(userId);
     user.deletedAt = new Date();
     await user.save();
 
@@ -148,7 +149,7 @@ export class UserService {
       .build();
   }
 
-  async lock(request: IdParamDto) {
+  async suspend(request: IdParamDto) {
     const { id, userId } = request;
 
     if (id === userId) {
@@ -166,21 +167,21 @@ export class UserService {
       );
     }
 
-    if (user.role === USER_ROLE_ENUM.ADMIN) {
+    if (user.role === ROLE_ENUM.ADMIN) {
       throw new BusinessException(
         this.i18n.translate('error.BAD_REQUEST'),
         ResponseCodeEnum.BAD_REQUEST,
       );
     }
 
-    if (user.isLocked) {
+    if (user.status === USER_STATUS_ENUM.SUSPENDED) {
       throw new BusinessException(
         this.i18n.translate('error.STATUS_INVALID'),
         ResponseCodeEnum.BAD_REQUEST,
       );
     }
 
-    user.isLocked = USER_LOCKED_ENUM.LOCKED;
+    user.status = USER_STATUS_ENUM.SUSPENDED;
     await user.save();
 
     const response = plainToInstance(GetUserDetailResponseDto, user, {
@@ -189,11 +190,11 @@ export class UserService {
 
     return new ResponseBuilder(response)
       .withCode(ResponseCodeEnum.SUCCESS)
-      .withMessage(this.i18n.translate('message.LOCK_SUCCESS'))
+      .withMessage(this.i18n.translate('message.SUSPEND_SUCCESS'))
       .build();
   }
 
-  async unlock(request: IdParamDto) {
+  async activate(request: IdParamDto) {
     const { id, userId } = request;
 
     if (id === userId) {
@@ -211,14 +212,14 @@ export class UserService {
       );
     }
 
-    if (!user.isLocked) {
+    if (user.status === USER_STATUS_ENUM.ACTIVE) {
       throw new BusinessException(
         this.i18n.translate('error.STATUS_INVALID'),
         ResponseCodeEnum.BAD_REQUEST,
       );
     }
 
-    user.isLocked = USER_LOCKED_ENUM.UNLOCKED;
+    user.status = USER_STATUS_ENUM.ACTIVE;
     await user.save();
 
     const response = plainToInstance(GetUserDetailResponseDto, user, {
@@ -227,7 +228,7 @@ export class UserService {
 
     return new ResponseBuilder(response)
       .withCode(ResponseCodeEnum.SUCCESS)
-      .withMessage(this.i18n.translate(`message.UNLOCK_SUCCESS`))
+      .withMessage(this.i18n.translate('message.ACTIVATE_SUCCESS'))
       .build();
   }
 }

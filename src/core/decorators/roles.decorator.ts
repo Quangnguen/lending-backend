@@ -1,7 +1,6 @@
 import { SetMetadata } from '@nestjs/common';
 
 import { ROLES_KEY } from '@constant/app.enum';
-import { USER_ROLE_ENUM } from '@components/user/user.constant';
+import { ROLE_ENUM } from '@constant/p2p-lending.enum';
 
-export const Roles = (...roles: USER_ROLE_ENUM[]) =>
-  SetMetadata(ROLES_KEY, roles);
+export const Roles = (...roles: ROLE_ENUM[]) => SetMetadata(ROLES_KEY, roles);

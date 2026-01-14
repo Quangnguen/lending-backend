@@ -10,7 +10,7 @@ import { Injectable, ExecutionContext } from '@nestjs/common';
 
 import { REQUEST_USER_KEY } from '@constant/app.enum';
 import { UserDocument } from '@database/schemas/user.model';
-import { USER_ROLE_ENUM } from '@components/user/user.constant';
+import { ROLE_ENUM } from '@constant/p2p-lending.enum';
 
 @Injectable()
 export class CustomThrottlerGuard extends ThrottlerGuard {
@@ -37,7 +37,7 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     const request = context.switchToHttp().getRequest();
     const user = request[REQUEST_USER_KEY] as UserDocument;
 
-    if (user?.role === USER_ROLE_ENUM.ADMIN) {
+    if (user?.role === ROLE_ENUM.ADMIN) {
       return 5; // Admins can make 5 requests in the TTL window
     } else {
       return 2; // Regular users get 2 requests

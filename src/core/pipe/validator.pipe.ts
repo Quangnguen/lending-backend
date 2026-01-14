@@ -163,6 +163,7 @@ const classValidationPatterns = {
 @Injectable()
 export class ValidationPipe implements PipeTransform<any> {
   constructor(private readonly i18n: I18nService) {}
+
   async transform(value, metadata: ArgumentMetadata) {
     const { metatype } = metadata;
     if (!metatype || !this.toValidate(metatype)) {
@@ -171,7 +172,21 @@ export class ValidationPipe implements PipeTransform<any> {
     if (!value) {
       throw new BadRequestException('No data submitted');
     }
-    const object = plainToInstance(metatype, value);
+
+    // Extract user and userId before transform to avoid Decimal128 issue
+    const { user, userId, ...restValue } = value;
+
+    // Transform only the rest of the value (without user object)
+    const object = plainToInstance(metatype, restValue);
+
+    // Re-attach user and userId after transform
+    if (user) {
+      object.user = user;
+    }
+    if (userId) {
+      object.userId = userId;
+    }
+
     const errors = await validate(object);
     if (errors.length > 0) {
       const message = await this.getMessage(errors, value?.lang);
