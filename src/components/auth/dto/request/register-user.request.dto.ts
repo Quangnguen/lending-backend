@@ -10,6 +10,12 @@ export class RegisterUserRequestDto extends BaseDto {
   @MaxLength(50)
   fullname: string;
 
+  @ApiProperty({ description: 'phone number', example: '0123456789' })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(20)
+  phoneNumber: string;
+
   @ApiProperty({ description: 'email', example: 'kamil@mysliwiec' })
   @IsNotEmpty()
   @IsString()

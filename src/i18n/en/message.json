@@ -7,5 +7,9 @@
   "LOCK_SUCCESS": "Locked successfully",
   "SUCCESS": "Success",
   "REGISTER_SUCCESS": "Registered successfully",
-  "LOGIN_SUCCESS": "Logged in successfully"
+  "REGISTER_SUCCESS_VERIFY_EMAIL": "Registration successful. Please check your email to verify.",
+  "EMAIL_VERIFIED_SUCCESS": "Email verified successfully",
+  "LOGIN_SUCCESS": "Logged in successfully",
+  "OTP_RESENT_SUCCESS": "OTP has been resent successfully",
+  "LOGIN_OTP_SENT": "OTP has been sent to your email"
 }

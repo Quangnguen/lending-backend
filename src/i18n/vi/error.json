@@ -44,5 +44,11 @@
   "MAX_DEPOSIT_AMOUNT": "Số tiền nạp tối đa là {max} VNĐ",
   "MAX_ACCOUNT_AMOUNT_BALANCE": "Tài khoản không thể chứa quá {max} VNĐ",
   "AMOUNT_BALANCE_NOT_ENOUGH": "Số dư tài khoản không đủ để thực hiện thanh toán",
-  "DEPOSIT_RATE_LIMIT_EXCEEDED": "Bạn đã tạo quá nhiều yêu cầu nạp tiền. Vui lòng thử lại sau {minutes} phút"
+  "DEPOSIT_RATE_LIMIT_EXCEEDED": "Bạn đã tạo quá nhiều yêu cầu nạp tiền. Vui lòng thử lại sau {minutes} phút",
+  "PHONE_EXIST": "Số điện thoại đã tồn tại",
+  "EMAIL_NOT_VERIFIED": "Email chưa được xác thực",
+  "INVALID_OTP": "Mã OTP không hợp lệ",
+  "EMAIL_ALREADY_VERIFIED": "Email đã được xác thực",
+  "USER_NOT_FOUND": "Người dùng không tồn tại",
+  "LOGOUT_FAILED": "Đăng xuất thất bại"
 }

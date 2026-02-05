@@ -1,11 +1,11 @@
 import {
   IsUrl,
   IsEnum,
-  Length,
   IsString,
   MaxLength,
   IsNotEmpty,
   IsOptional,
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -47,7 +47,7 @@ export class CreateUserRequestDto extends BaseDto {
   avatarUrl?: string;
 
   @ApiProperty({ description: 'phone', example: '0123456789' })
-  @Length(10)
+  @MaxLength(20)
   @IsString()
   @IsOptional()
   phone?: string;
@@ -96,6 +96,11 @@ export class CreateUserRequestDto extends BaseDto {
   // Status
   @IsOptional()
   status?: string;
+
+  @ApiProperty({ description: 'isVerified', example: false })
+  @IsOptional()
+  @IsBoolean()
+  isVerified?: boolean;
 
   // Reference
   @IsOptional()

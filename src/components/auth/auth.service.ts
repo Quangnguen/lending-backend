@@ -18,6 +18,7 @@ import {
   ROLE_ENUM,
   GENDER_ENUM,
   USER_STATUS_ENUM,
+  DEVICE_TYPE_ENUM,
 } from '@constant/p2p-lending.enum';
 import { EVENT_ENUM } from '@constant/event.enum';
 import { AllConfigType } from '@config/config.type';
@@ -41,6 +42,11 @@ import { UserRepositoryInterface } from '@database/repository/user/user.reposito
 import { RefreshTokenRequestDto } from '@components/auth/dto/request/refresh-token.request.dto';
 import { RefreshTokenResponseDto } from '@components/auth/dto/response/refresh-token.response.dto';
 import { ForgotPasswordRequestDto } from '@components/auth/dto/request/forgot-password.request.dto';
+import { VerifyEmailRequestDto } from './dto/request/verify-email.request.dto';
+import { ResendOtpRequestDto } from './dto/request/resend-otp.request.dto';
+import { VerifyLoginOtpRequestDto } from './dto/request/verify-login-otp.request.dto';
+import { UserSessionRepositoryInterface } from '@database/repository/user-session/user-session.repository.interface';
+import { LogoutRequestDto } from './dto/request/logout.request.dto';
 
 @Injectable()
 export class AuthService {
@@ -59,10 +65,13 @@ export class AuthService {
 
     @Inject('UserRepositoryInterface')
     private readonly userRepository: UserRepositoryInterface,
+
+    @Inject('UserSessionRepositoryInterface')
+    private readonly userSessionRepository: UserSessionRepositoryInterface,
   ) {}
 
   async register(request: RegisterUserRequestDto) {
-    const { email } = request;
+    const { email, phoneNumber } = request;
 
     const emailExist = await this.userRepository.findOne({ email });
     if (!isEmpty(emailExist)) {
@@ -72,30 +81,64 @@ export class AuthService {
       );
     }
 
+    const phoneExist = await this.userRepository.findOne({
+      phone: phoneNumber,
+    });
+    if (!isEmpty(phoneExist)) {
+      throw new BusinessException(
+        this.i18n.translate('error.PHONE_EXIST'), // Thêm key này vào i18n nếu cần
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
     const { fullname, password } = request;
     const newEntity = this.userRepository.createEntity({
       email,
       fullName: fullname,
       passwordHash: password,
+      phone: phoneNumber,
       role: ROLE_ENUM.USER,
       gender: GENDER_ENUM.FEMALE,
+      isVerified: false, // Thêm này
     } as CreateUserRequestDto);
 
     await newEntity.save();
 
+    // Tạo OTP
+    const otp = generateRandomString(6, 'numeric'); // Giả sử hàm này tạo string số 6 chữ số
+    const cacheKey = `otp:${email}`;
+    await this.cacheManager.set(cacheKey, otp, 300000); // 5 phút
+
+    // Gửi email
+    this.eventEmitter.emit(EVENT_ENUM.SEND_MAIL, {
+      email,
+      body: {
+        subject: 'Xác thực email đăng ký',
+        template: 'verify-email.ejs',
+        context: { otp },
+      },
+    } as SendMailRequestDto);
+
     return new ResponseBuilder()
       .withCode(ResponseCodeEnum.CREATED)
-      .withMessage(this.i18n.translate('message.REGISTER_SUCCESS'))
+      .withMessage(this.i18n.translate('message.REGISTER_SUCCESS_VERIFY_EMAIL')) // Cập nhật message
       .build();
   }
 
   async login(request: LoginUserRequestDto) {
-    const { email, password } = request;
+    const { email, password, deviceId, deviceName, deviceType } = request;
 
     const user = await this.userRepository.findOne({ email });
     if (isEmpty(user)) {
       throw new BusinessException(
         this.i18n.translate('error.EMAIL_OR_PASSWORD_INVALID'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    if (!user.isVerified) {
+      throw new BusinessException(
+        this.i18n.translate('error.EMAIL_NOT_VERIFIED'),
         ResponseCodeEnum.BAD_REQUEST,
       );
     }
@@ -123,7 +166,62 @@ export class AuthService {
       );
     }
 
-    return await this.buildDataLoginSuccess(user);
+    // Check if device is trusted
+    if (deviceId) {
+      this.logger.log(
+        `Checking trusted device for user: ${email}, deviceId: ${deviceId}`,
+      );
+
+      const trustedDevice = await this.userSessionRepository.findTrustedDevice(
+        user._id,
+        deviceId,
+      );
+
+      this.logger.log(`Trusted device found: ${trustedDevice ? 'YES' : 'NO'}`);
+
+      if (trustedDevice) {
+        // Trusted device - login directly
+        this.logger.log(
+          `Trusted device login for user: ${email}, deviceId: ${deviceId}`,
+        );
+        return await this.buildDataLoginSuccess(user, {
+          deviceId,
+          deviceName,
+          deviceType,
+          isTrusted: true,
+        });
+      }
+    }
+
+    // Not a trusted device - require OTP verification
+    const otp = generateRandomString(6, 'numeric');
+    const cacheKey = `login-otp:${email}`;
+    await this.cacheManager.set(cacheKey, otp, 300000); // 5 minutes
+
+    this.logger.log(`Login OTP for ${email}: ${otp}`);
+
+    // Send OTP email
+    this.eventEmitter.emit(EVENT_ENUM.SEND_MAIL, {
+      email,
+      body: {
+        subject: 'Mã xác thực đăng nhập',
+        template: MAIL_TEMPLATE_ENUM.VERIFY_LOGIN,
+        context: {
+          otp,
+          deviceName: deviceName || 'Unknown Device',
+          deviceType: deviceType || 'Unknown',
+        },
+      },
+    } as SendMailRequestDto);
+
+    return new ResponseBuilder({
+      requireOtp: true,
+      email: email,
+      message: 'Vui lòng nhập mã OTP đã gửi đến email của bạn',
+    })
+      .withCode(ResponseCodeEnum.SUCCESS)
+      .withMessage(this.i18n.translate('message.LOGIN_OTP_SENT'))
+      .build();
   }
 
   getMe(request: BaseDto) {
@@ -264,6 +362,52 @@ export class AuthService {
       .build();
   }
 
+  // Thêm vào auth.service.ts
+
+  async logout(request: LogoutRequestDto) {
+    const { user, deviceId, logoutAll } = request;
+
+    if (!user) {
+      throw new BusinessException(
+        this.i18n.translate('error.UNAUTHORIZED'),
+        ResponseCodeEnum.UNAUTHORIZED,
+      );
+    }
+
+    try {
+      if (logoutAll) {
+        // Logout from all devices
+        const count = await this.userSessionRepository.deactivateAllSessions(
+          user._id,
+        );
+        this.logger.log(
+          `User ${user.email} logged out from all ${count} devices`,
+        );
+      } else if (deviceId) {
+        // Logout from specific device
+        await this.userSessionRepository.deactivateSession(user._id, deviceId);
+        this.logger.log(`User ${user.email} logged out from device: ${deviceId}
+          `);
+      } else {
+        // If no deviceId provided, just return success (token-based logout handled by client)
+        this.logger.log(
+          `User ${user.email} logged out (token cleared on client)`,
+        );
+      }
+
+      return new ResponseBuilder()
+        .withCode(ResponseCodeEnum.SUCCESS)
+        .withMessage(this.i18n.translate('message.LOGOUT_SUCCESS'))
+        .build();
+    } catch (error) {
+      this.logger.error(`Logout error for user ${user.email}:`, error);
+      throw new BusinessException(
+        this.i18n.translate('error.LOGOUT_FAILED'),
+        ResponseCodeEnum.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   async forgotPassword(request: ForgotPasswordRequestDto) {
     const { email } = request;
 
@@ -308,10 +452,135 @@ export class AuthService {
       .build();
   }
 
-  private async buildDataLoginSuccess(user: User) {
-    const authConfig = this.configService.get('auth', {
-      infer: true,
+  async verifyEmail(request: VerifyEmailRequestDto) {
+    const { email, otp } = request;
+
+    const user = await this.userRepository.findOne({ email });
+    if (isEmpty(user)) {
+      throw new BusinessException(
+        this.i18n.translate('error.USER_NOT_FOUND'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    if (user.isVerified) {
+      throw new BusinessException(
+        this.i18n.translate('error.EMAIL_ALREADY_VERIFIED'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    const cacheKey = `otp:${email}`;
+    const cachedOtp = await this.cacheManager.get(cacheKey);
+    if (!cachedOtp || cachedOtp !== otp) {
+      throw new BusinessException(
+        this.i18n.translate('error.INVALID_OTP'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    // Xóa OTP khỏi cache
+    await this.cacheManager.del(cacheKey);
+
+    // Cập nhật user
+    user.isVerified = true;
+    await user.save();
+
+    return new ResponseBuilder()
+      .withCode(ResponseCodeEnum.SUCCESS)
+      .withMessage(this.i18n.translate('message.EMAIL_VERIFIED_SUCCESS'))
+      .build();
+  }
+
+  async resendOtp(request: ResendOtpRequestDto) {
+    const { email } = request;
+
+    const user = await this.userRepository.findOne({ email });
+    if (isEmpty(user)) {
+      throw new BusinessException(
+        this.i18n.translate('error.USER_NOT_FOUND'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    if (user.isVerified) {
+      throw new BusinessException(
+        this.i18n.translate('error.EMAIL_ALREADY_VERIFIED'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    // Tạo OTP mới
+    const otp = generateRandomString(6, 'numeric');
+    const cacheKey = `otp:${email}`;
+    await this.cacheManager.set(cacheKey, otp, 300000); // 5 phút
+
+    this.logger.log(`RESEND OTP for ${email}: ${otp}`);
+
+    // Gửi email
+    this.eventEmitter.emit(EVENT_ENUM.SEND_MAIL, {
+      email,
+      body: {
+        subject: 'Mã OTP xác thực tài khoản',
+        template: 'verify-email.ejs',
+        context: { otp },
+      },
+    } as SendMailRequestDto);
+
+    return new ResponseBuilder()
+      .withCode(ResponseCodeEnum.SUCCESS)
+      .withMessage(this.i18n.translate('message.OTP_RESENT_SUCCESS'))
+      .build();
+  }
+
+  async verifyLoginOtp(request: VerifyLoginOtpRequestDto) {
+    const { email, otp, deviceId, deviceName, deviceType, trustDevice } =
+      request;
+
+    const user = await this.userRepository.findOne({ email });
+    if (isEmpty(user)) {
+      throw new BusinessException(
+        this.i18n.translate('error.USER_NOT_FOUND'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    const cacheKey = `login-otp:${email}`;
+    const cachedOtp = await this.cacheManager.get(cacheKey);
+
+    if (!cachedOtp || cachedOtp !== otp) {
+      throw new BusinessException(
+        this.i18n.translate('error.INVALID_OTP'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    // Clear OTP from cache
+    await this.cacheManager.del(cacheKey);
+
+    this.logger.log(
+      `Login OTP verified for ${email}, deviceId: ${deviceId}, trustDevice: ${trustDevice}`,
+    );
+
+    // Login success - create session with trust status
+    return await this.buildDataLoginSuccess(user, {
+      deviceId,
+      deviceName,
+      deviceType,
+      isTrusted: trustDevice || false,
     });
+  }
+
+  private async buildDataLoginSuccess(
+    user: User,
+    deviceInfo?: {
+      deviceId?: string;
+      deviceName?: string;
+      deviceType?: DEVICE_TYPE_ENUM;
+      isTrusted?: boolean;
+    },
+  ) {
+    const authConfig = this.configService.get('auth', { infer: true });
 
     const {
       accessSecret,
@@ -346,12 +615,18 @@ export class AuthService {
       ),
     ]);
 
+    // Save or update session if deviceId provided
+    if (deviceInfo?.deviceId) {
+      await this.saveUserSession(user, accessToken, refreshToken, deviceInfo);
+    }
+
     const response = plainToInstance(
       LoginSuccessResponseDto,
       {
         user,
         accessToken,
         refreshToken,
+        isTrustedDevice: deviceInfo?.isTrusted || false,
       },
       {
         excludeExtraneousValues: true,
@@ -362,5 +637,47 @@ export class AuthService {
       .withCode(ResponseCodeEnum.SUCCESS)
       .withMessage(this.i18n.translate('message.LOGIN_SUCCESS'))
       .build();
+  }
+
+  // Helper method để lưu session
+  private async saveUserSession(
+    user: User,
+    accessToken: string,
+    refreshToken: string,
+    deviceInfo: {
+      deviceId?: string;
+      deviceName?: string;
+      deviceType?: DEVICE_TYPE_ENUM;
+      isTrusted?: boolean;
+    },
+  ) {
+    if (!deviceInfo?.deviceId) {
+      this.logger.warn('No deviceId provided, skipping session save');
+      return;
+    }
+
+    this.logger.log(
+      `Saving session for user: ${user.email}, deviceId: ${deviceInfo.deviceId}, isTrusted: ${deviceInfo.isTrusted}`,
+    );
+
+    const session = await this.userSessionRepository.upsertSession(
+      user._id,
+      {
+        deviceId: deviceInfo.deviceId,
+        deviceName: deviceInfo.deviceName,
+        deviceType: deviceInfo.deviceType,
+      },
+      {
+        accessToken,
+        refreshToken,
+      },
+      {
+        isTrusted: deviceInfo.isTrusted,
+      },
+    );
+
+    this.logger.log(
+      `Session saved: ${session._id}, isTrusted in DB: ${session.isTrusted}`,
+    );
   }
 }

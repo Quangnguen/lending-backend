@@ -10,12 +10,18 @@ export const isJson = (str: string): boolean => {
 /**
  * Tạo một chuỗi ngẫu nhiên với độ dài xác định
  * @param length Độ dài của chuỗi cần tạo
+ * @param type Loại chuỗi: 'alphanumeric' (mặc định) hoặc 'numeric' (chỉ số)
  * @returns Chuỗi ngẫu nhiên
  * @throws Error nếu độ dài không hợp lệ
  */
-export function generateRandomString(length: number): string {
+export function generateRandomString(
+  length: number,
+  type: 'alphanumeric' | 'numeric' = 'alphanumeric',
+): string {
   const characters: string =
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    type === 'numeric'
+      ? '0123456789'
+      : 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
   if (length <= 0) {
     throw new Error('Length must be greater than 0');

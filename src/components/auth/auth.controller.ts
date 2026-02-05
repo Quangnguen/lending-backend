@@ -1,11 +1,9 @@
 import { isEmpty } from 'lodash';
 import { Throttle } from '@nestjs/throttler';
-import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Put, Get, Post, Body, Request, Controller } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
-import { AllConfigType } from '@config/config.type';
 import { BaseDto } from '@core/dto/base.request.dto';
 import { Public } from '@core/decorators/public.decorator';
 import { UpdateMeRequestDto } from './dto/request/update-me.request.dto';
@@ -14,6 +12,10 @@ import { RegisterUserRequestDto } from './dto/request/register-user.request.dto'
 import { ChangePasswordRequestDto } from './dto/request/change-password.request.dto';
 import { RefreshTokenRequestDto } from '@components/auth/dto/request/refresh-token.request.dto';
 import { ForgotPasswordRequestDto } from '@components/auth/dto/request/forgot-password.request.dto';
+import { VerifyEmailRequestDto } from './dto/request/verify-email.request.dto';
+import { ResendOtpRequestDto } from './dto/request/resend-otp.request.dto';
+import { VerifyLoginOtpRequestDto } from './dto/request/verify-login-otp.request.dto';
+import { LogoutRequestDto } from './dto/request/logout.request.dto';
 
 @ApiBearerAuth()
 @Controller('auth')
@@ -60,6 +62,50 @@ export class AuthController {
     }
 
     return await this.authService.login(request);
+  }
+
+  @Post('/logout')
+  @ApiOperation({
+    tags: ['Auth'],
+    summary: 'Đăng xuất',
+    description: 'Đăng xuất khỏi thiết bị hiện tại hoặc tất cả thiết bị',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Success',
+  })
+  async logout(@Body() payload: LogoutRequestDto, @Request() req) {
+    const { request, responseError } = payload;
+
+    if (!isEmpty(responseError)) {
+      return responseError;
+    }
+
+    // Gán user từ request (đã được auth guard xử lý)
+    request.user = req.user;
+
+    return await this.authService.logout(request);
+  }
+
+  @Public()
+  @Post('/verify-login-otp')
+  @ApiOperation({
+    tags: ['Auth'],
+    summary: 'Xác thực OTP đăng nhập',
+    description: 'Xác thực OTP khi đăng nhập từ thiết bị không đáng tin cậy',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Success',
+  })
+  async verifyLoginOtp(@Body() payload: VerifyLoginOtpRequestDto) {
+    const { request, responseError } = payload;
+
+    if (!isEmpty(responseError)) {
+      return responseError;
+    }
+
+    return await this.authService.verifyLoginOtp(request);
   }
 
   @Throttle({
@@ -162,5 +208,47 @@ export class AuthController {
     }
 
     return await this.authService.refreshToken(request);
+  }
+
+  @Public()
+  @Post('/verify-email')
+  @ApiOperation({
+    tags: ['Auth'],
+    summary: 'Xác thực email bằng OTP',
+    description: 'Xác thực email bằng OTP sau đăng ký',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Success',
+  })
+  async verifyEmail(@Body() payload: VerifyEmailRequestDto) {
+    const { request, responseError } = payload;
+
+    if (!isEmpty(responseError)) {
+      return responseError;
+    }
+
+    return await this.authService.verifyEmail(request);
+  }
+
+  @Public()
+  @Post('/resend-otp')
+  @ApiOperation({
+    tags: ['Auth'],
+    summary: 'Gửi lại mã OTP',
+    description: 'Gửi lại mã OTP xác thực email',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Success',
+  })
+  async resendOtp(@Body() payload: ResendOtpRequestDto) {
+    const { request, responseError } = payload;
+
+    if (!isEmpty(responseError)) {
+      return responseError;
+    }
+
+    return await this.authService.resendOtp(request);
   }
 }

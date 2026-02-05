@@ -18,4 +18,7 @@ export class LoginSuccessResponseDto {
 
   @Expose()
   refreshTokenExpires: Date;
+
+  @Expose()
+  isTrustedDevice: boolean;
 }

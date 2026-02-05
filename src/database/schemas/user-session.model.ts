@@ -44,6 +44,16 @@ export class UserSession extends BaseModel {
 
   @Prop({ type: Boolean, default: true })
   isActive: boolean;
+
+  // ========== TRUSTED DEVICE FIELDS ==========
+  @Prop({ type: Boolean, default: false })
+  isTrusted: boolean; // Thiết bị đáng tin cậy - không cần OTP khi đăng nhập
+
+  @Prop({ type: Date })
+  trustedAt: Date; // Thời điểm được đánh dấu tin cậy
+
+  @Prop({ type: String, maxlength: 500 })
+  userAgent: string; // Lưu thông tin trình duyệt/app
 }
 
 export const UserSessionSchema = SchemaFactory.createForClass(UserSession);
@@ -51,3 +61,5 @@ export type UserSessionDocument = UserSession & mongoose.Document;
 
 // Index for cleanup expired sessions
 UserSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+UserSessionSchema.index({ userId: 1, deviceId: 1, isTrusted: 1 });

@@ -1,24 +1,27 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, IsEnum } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsEnum,
+} from 'class-validator';
 
 import { BaseDto } from '@core/dto/base.request.dto';
 import { DEVICE_TYPE_ENUM } from '@constant/p2p-lending.enum';
 
-export class LoginUserRequestDto extends BaseDto {
+export class VerifyLoginOtpRequestDto extends BaseDto {
   @ApiProperty({ description: 'Email', example: 'user@example.com' })
   @IsNotEmpty()
   @IsString()
   email: string;
 
-  @ApiProperty({ description: 'Password', example: 'password123' })
+  @ApiProperty({ description: 'OTP code', example: '123456' })
   @IsNotEmpty()
   @IsString()
-  password: string;
+  otp: string;
 
-  @ApiProperty({
-    description: 'Device ID (unique identifier)',
-    example: 'abc123-device-id',
-  })
+  @ApiProperty({ description: 'Device ID', example: 'abc123-device-id' })
   @IsOptional()
   @IsString()
   deviceId?: string;
@@ -28,12 +31,16 @@ export class LoginUserRequestDto extends BaseDto {
   @IsString()
   deviceName?: string;
 
-  @ApiProperty({
-    description: 'Device type',
-    enum: DEVICE_TYPE_ENUM,
-    example: 'android',
-  })
+  @ApiProperty({ description: 'Device type', enum: DEVICE_TYPE_ENUM })
   @IsOptional()
   @IsEnum(DEVICE_TYPE_ENUM)
   deviceType?: DEVICE_TYPE_ENUM;
+
+  @ApiProperty({
+    description: 'Trust this device for future logins',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  trustDevice?: boolean;
 }

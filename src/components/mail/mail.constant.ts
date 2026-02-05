@@ -3,4 +3,6 @@ export enum MAIL_TEMPLATE_ENUM {
   FORGOT_PASSWORD = 'forgot-password',
   RESPONSE_CONTACT = 'response-contact',
   REGISTER_WITH_GOOGLE = 'register-with-google',
+  VERIFY_EMAIL = 'verify-email',
+  VERIFY_LOGIN = 'verify-login',
 }

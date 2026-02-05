@@ -6,6 +6,7 @@ import MongoConnectService from './mongo.connect.service';
 import { UserRepository } from './repository/user/user.repository';
 import { FileRepository } from '@database/repository/file/file.repository';
 import { ContactRepository } from './repository/contact/contact.repository';
+import { UserSessionRepository } from './repository/user-session/user-session.repository';
 
 @Global()
 @Module({
@@ -26,6 +27,10 @@ import { ContactRepository } from './repository/contact/contact.repository';
       provide: 'ContactRepositoryInterface',
       useClass: ContactRepository,
     },
+    {
+      provide: 'UserSessionRepositoryInterface',
+      useClass: UserSessionRepository,
+    },
   ],
   exports: [
     {
@@ -39,6 +44,10 @@ import { ContactRepository } from './repository/contact/contact.repository';
     {
       provide: 'ContactRepositoryInterface',
       useClass: ContactRepository,
+    },
+    {
+      provide: 'UserSessionRepositoryInterface',
+      useClass: UserSessionRepository,
     },
   ],
 })

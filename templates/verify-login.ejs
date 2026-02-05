@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Mã xác thực đăng nhập</title>
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
+  <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
+    <h2 style="color: #333; text-align: center;">🔐 Xác thực đăng nhập</h2>
+    
+    <p>Xin chào,</p>
+    
+    <p>Chúng tôi nhận thấy có yêu cầu đăng nhập vào tài khoản của bạn từ thiết bị:</p>
+    
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+      <p><strong>Thiết bị:</strong> <%= deviceName %></p>
+      <p><strong>Loại:</strong> <%= deviceType %></p>
+    </div>
+    
+    <p>Mã xác thực của bạn là:</p>
+    
+    <div style="text-align: center; margin: 30px 0;">
+      <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #007bff; background: #e7f3ff; padding: 15px 30px; border-radius: 8px;">
+        <%= otp %>
+      </span>
+    </div>
+    
+    <p style="color: #666; font-size: 14px;">
+      ⏰ Mã này sẽ hết hạn sau <strong>5 phút</strong>.
+    </p>
+    
+    <p style="color: #dc3545; font-size: 14px;">
+      ⚠️ Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email và đổi mật khẩu ngay lập tức.
+    </p>
+    
+    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+    
+    <p style="color: #999; font-size: 12px; text-align: center;">
+      P2P Lending Platform - Bảo mật là ưu tiên hàng đầu của chúng tôi
+    </p>
+  </div>
+</body>
+</html>

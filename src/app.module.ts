@@ -35,6 +35,8 @@ import { MongoConnectModule } from '@database/mongo.connect.module';
 import { CustomThrottlerGuard } from '@core/guards/custom-throttler.guard';
 import { RedisCacheModule } from '@core/components/redis/redis-cache.module';
 import { RequestLoggingMiddleware } from '@core/middlewares/request-logging.middleware';
+import openbankingConfig from '@config/openbanking.config';
+import { OpenBankingModule } from '@components/openbanking/openbanking.module';
 
 @Module({
   imports: [
@@ -45,7 +47,7 @@ import { RequestLoggingMiddleware } from '@core/middlewares/request-logging.midd
     JwtModule.register({}),
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, databaseConfig],
+      load: [appConfig, authConfig, databaseConfig, openbankingConfig],
       envFilePath: ['.env'],
     }),
     I18nModule.forRootAsync({
@@ -88,6 +90,7 @@ import { RequestLoggingMiddleware } from '@core/middlewares/request-logging.midd
     CronModule,
     ContactModule,
     RedisCacheModule,
+    OpenBankingModule,
   ],
   controllers: [AppController],
   providers: [
