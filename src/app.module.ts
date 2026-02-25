@@ -37,6 +37,7 @@ import { RedisCacheModule } from '@core/components/redis/redis-cache.module';
 import { RequestLoggingMiddleware } from '@core/middlewares/request-logging.middleware';
 import openbankingConfig from '@config/openbanking.config';
 import { OpenBankingModule } from '@components/openbanking/openbanking.module';
+import { CreditModule } from '@components/credit/credit.module';
 
 @Module({
   imports: [
@@ -91,6 +92,7 @@ import { OpenBankingModule } from '@components/openbanking/openbanking.module';
     ContactModule,
     RedisCacheModule,
     OpenBankingModule,
+    CreditModule,
   ],
   controllers: [AppController],
   providers: [

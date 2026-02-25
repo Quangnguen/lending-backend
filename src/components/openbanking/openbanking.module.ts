@@ -8,14 +8,18 @@ import {
   BankConnectionSchema,
 } from './schemas/bank-connection.schema';
 
+// Import 2 file mới vừa tạo
+import { MockOpenBankingController } from './mock/mock-openbanking.controller';
+import { MockOpenBankingService } from './mock/mock-openbanking.service';
+
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: BankConnection.name, schema: BankConnectionSchema },
     ]),
   ],
-  controllers: [OpenBankingController],
-  providers: [OpenBankingService],
-  exports: [OpenBankingService],
+  controllers: [OpenBankingController, MockOpenBankingController],
+  providers: [OpenBankingService, MockOpenBankingService],
+  exports: [OpenBankingService, MockOpenBankingService],
 })
-export class OpenBankingModule {}
+export class OpenBankingModule { }
