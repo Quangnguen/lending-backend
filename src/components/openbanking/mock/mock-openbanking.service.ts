@@ -1,106 +1,249 @@
-import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
-import { VN_BANKS, MOCK_ACCOUNTS, MOCK_TRANSACTIONS } from './vn-banks.data';
-import { LinkBankDto, VerifyOtpDto, BankConnectionResponse, BankAccount, BankTransaction } from '../dto/openbanking.dto';
+import { Injectable, BadRequestException, UnauthorizedException, Logger } from '@nestjs/common';
+import { MOCK_ACCOUNTS, MOCK_TRANSACTIONS } from './vn-banks.data';
+import { VietQRService } from '../vietqr.service';
+import { OpenBankingService } from '../openbanking.service';
+import {
+  LinkBankDto,
+  VerifyOtpDto,
+  BankConnectionResponse,
+  BankAccount,
+  BankTransaction,
+  Bank,
+} from '../dto/openbanking.dto';
 
 @Injectable()
 export class MockOpenBankingService {
-    // Lưu trữ tạm các phiên OTP trong bộ nhớ Ram
-    // key: transactionId, value: {bankId, username, timestamp}
-    private otpSessions = new Map<string, { bankId: string; username: string; timestamp: number }>();
+  private readonly logger = new Logger(MockOpenBankingService.name);
 
-    //1. Get list of banks
-    getBanks() {
-        return VN_BANKS;
+  // Lưu trữ tạm các phiên OTP trong bộ nhớ Ram
+  // key: transactionId, value: {bankCode, accountNumber, accountName, timestamp}
+  private otpSessions = new Map<
+    string,
+    { bankCode: string; accountNumber: string; accountName: string; timestamp: number }
+  >();
+
+  constructor(
+    private readonly vietqrService: VietQRService,
+    private readonly openBankingService: OpenBankingService,
+  ) { }
+
+  /**
+   * 1. Lấy danh sách ngân hàng - dùng VietQR API thật
+   */
+  async getBanks(): Promise<Bank[]> {
+    return this.vietqrService.getBanks();
+  }
+
+  /**
+   * 2. Bước 1: Yêu cầu liên kết ngân hàng
+   * Trong thực tế sẽ gọi API của ngân hàng, ở đây mock OTP flow
+   */
+  async initiateLink(dto: LinkBankDto): Promise<BankConnectionResponse> {
+    const { bankCode, accountNumber, accountName } = dto;
+
+    // Validate bank exists in VietQR
+    const bank = await this.vietqrService.findBankByCode(bankCode);
+    if (!bank) {
+      throw new BadRequestException(`Ngân hàng với mã ${bankCode} không tồn tại`);
     }
 
-    //2. step 1: Request link bank
-    async initiateLink(dto: LinkBankDto): Promise<BankConnectionResponse> {
-        const { bankId, username, password } = dto;
+    // Tạo phiên OTP
+    const transactionId = `link_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 
-        // Check if bank exists
-        const bank = VN_BANKS.find(b => b.id === bankId);
-        if (!bank) {
-            throw new BadRequestException('Bank not found');
+    // Lưu session (5 phút)
+    this.otpSessions.set(transactionId, {
+      bankCode,
+      accountNumber,
+      accountName,
+      timestamp: Date.now(),
+    });
+
+    return {
+      success: true,
+      message: `Mã OTP đã gửi đến số điện thoại đăng ký tại ${bank.shortName}. (Demo: nhập 123456)`,
+      transactionId,
+    };
+  }
+
+  /**
+   * 3. Bước 2: Xác thực OTP
+   */
+  async verifyOtp(dto: VerifyOtpDto, userId?: string): Promise<BankConnectionResponse> {
+    const { transactionId, otp } = dto;
+
+    // Check transactionId
+    const session = this.otpSessions.get(transactionId);
+    if (!session) {
+      throw new BadRequestException('Phiên liên kết không hợp lệ hoặc đã hết hạn');
+    }
+
+    // Kiểm tra hết hạn (5 phút)
+    if (Date.now() - session.timestamp > 5 * 60 * 1000) {
+      this.otpSessions.delete(transactionId);
+      throw new BadRequestException('Mã OTP đã hết hạn, vui lòng thử lại');
+    }
+
+    // Mock OTP check - demo dùng mã 123456
+    if (otp === '123456') {
+      this.otpSessions.delete(transactionId);
+
+      // Tạo mock account cho user
+      const bank = await this.vietqrService.findBankByCode(session.bankCode);
+
+      const newAccount: BankAccount = {
+        id: `acc_${session.bankCode.toLowerCase()}_${Date.now()}`,
+        bankId: session.bankCode,
+        bankName: bank?.shortName,
+        bankLogo: bank?.logo,
+        accountNumber: session.accountNumber,
+        accountName: session.accountName,
+        balance: Math.floor(Math.random() * 100000000) + 10000000, // Random 10-110tr
+        currency: 'VND',
+        type: 'CURRENT',
+      };
+
+      // Lưu account vào MOCK_ACCOUNTS để getAccounts() trả về
+      // Tránh trùng lặp: kiểm tra theo bankId + accountNumber
+      if (!MOCK_ACCOUNTS['demo_user']) {
+        MOCK_ACCOUNTS['demo_user'] = [];
+      }
+      const existingIndex = MOCK_ACCOUNTS['demo_user'].findIndex(
+        (acc) => acc.bankId === session.bankCode && acc.accountNumber === session.accountNumber,
+      );
+      if (existingIndex >= 0) {
+        MOCK_ACCOUNTS['demo_user'][existingIndex] = newAccount;
+      } else {
+        MOCK_ACCOUNTS['demo_user'].push(newAccount);
+      }
+
+      // === PERSIST vào MongoDB để validateUserFlow tìm thấy ===
+      if (userId) {
+        try {
+          await this.openBankingService.createConnection(
+            userId,
+            session.bankCode,
+            session.accountNumber,
+            session.accountName,
+          );
+          this.logger.log(`✅ Persisted bank connection to MongoDB for user ${userId}`);
+        } catch (err) {
+          this.logger.warn(`⚠️ Failed to persist bank connection to MongoDB: ${err.message}`);
+          // Không throw - mock flow vẫn thành công
         }
+      }
 
-        // Mock check credentials
-        // In production, this would be a call to the bank's API
-        if (username === 'demo_user' && password === 'demo_pass') {
-            // Create OTP session
-            const transactionId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-            // Save session(5 minute)
-            this.otpSessions.set(transactionId, {
-                bankId,
-                username,
-                timestamp: Date.now()
-            });
-
-            return {
-                success: true,
-                message: 'OTP sent successfully',
-                transactionId: transactionId
-            }
-        }
-
-        throw new UnauthorizedException('Invalid credentials');
+      return {
+        success: true,
+        message: `Liên kết ${bank?.shortName} thành công`,
+        data: {
+          linkedAccount: newAccount,
+        },
+      };
     }
 
-    // 3. Step 2: Verify OTP
-    async verifyOtp(dto: VerifyOtpDto): Promise<BankConnectionResponse> {
-        const { transactionId, otp } = dto;
+    throw new BadRequestException('Mã OTP không đúng');
+  }
 
-        // Check transactionId
-        const session = this.otpSessions.get(transactionId);
-        if (!session) {
-            throw new BadRequestException('Invalid transaction ID');
-        }
+  /**
+   * 4. Lấy danh sách tài khoản đã liên kết
+   */
+  async getAccounts(username: string): Promise<BankAccount[]> {
+    const accounts = MOCK_ACCOUNTS[username] || [];
 
-        if (Date.now() - session.timestamp > 5 * 60 * 1000) {
-            this.otpSessions.delete(transactionId);
-            throw new BadRequestException('OTP expired');
-        }
+    // Enrich with bank info from VietQR
+    const enrichedAccounts = await Promise.all(
+      accounts.map(async (acc) => {
+        const bank = await this.vietqrService.findBankByCode(acc.bankId);
+        return {
+          ...acc,
+          bankName: bank?.shortName,
+          bankLogo: bank?.logo,
+        };
+      }),
+    );
 
-        // Mock OTP check
-        if (otp === '123456') {
-            const accounts = MOCK_ACCOUNTS[session.username] || [];
-            const linkedAccounts = accounts.filter(acc => acc.bankId == session.bankId);
+    return enrichedAccounts;
+  }
 
-            // delete otp session when success
-            this.otpSessions.delete(transactionId);
+  /**
+   * 5. Lấy lịch sử giao dịch
+   */
+  async getTransactions(accountId: string): Promise<BankTransaction[]> {
+    return MOCK_TRANSACTIONS[accountId] || [];
+  }
 
-            return {
-                success: true,
-                message: 'Link bank successfully',
-                data: {
-                    linkedAccounts: linkedAccounts
-                }
-            }
-        }
-
-        throw new BadRequestException('Invalid OTP');
+  /**
+   * 6. Tính điểm tín dụng dựa trên tài khoản ngân hàng
+   */
+  async calculateCreditScore(username: string): Promise<{
+    score: number;
+    rating: string;
+    loanLimit: number;
+    breakdown: {
+      balanceScore: number;
+      accountsScore: number;
+      transactionScore: number;
+    };
+  }> {
+    const accounts = MOCK_ACCOUNTS[username] || [];
+    if (accounts.length === 0) {
+      return {
+        score: 0,
+        rating: 'Chưa có dữ liệu',
+        loanLimit: 0,
+        breakdown: { balanceScore: 0, accountsScore: 0, transactionScore: 0 },
+      };
     }
 
-    // 4. get list of accounts
-    async getAccounts(username: string): Promise<BankAccount[]> {
-        return MOCK_ACCOUNTS[username] || [];
+    const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+    const numAccounts = accounts.length;
+
+    // Tính điểm dựa trên số dư
+    let balanceScore = 0;
+    if (totalBalance > 100_000_000) balanceScore = 400;
+    else if (totalBalance > 50_000_000) balanceScore = 300;
+    else if (totalBalance > 20_000_000) balanceScore = 200;
+    else if (totalBalance > 5_000_000) balanceScore = 100;
+
+    // Tính điểm dựa trên số tài khoản
+    const accountsScore = Math.min(numAccounts * 50, 200);
+
+    // Tính điểm dựa trên lịch sử giao dịch
+    let transactionScore = 0;
+    for (const acc of accounts) {
+      const txs = MOCK_TRANSACTIONS[acc.id] || [];
+      transactionScore += Math.min(txs.length * 30, 200);
+    }
+    transactionScore = Math.min(transactionScore, 400);
+
+    const totalScore = Math.min(balanceScore + accountsScore + transactionScore, 1000);
+
+    // Rating
+    let rating: string;
+    let loanLimit: number;
+    if (totalScore >= 800) {
+      rating = 'Xuất sắc';
+      loanLimit = 500_000_000;
+    } else if (totalScore >= 600) {
+      rating = 'Tốt';
+      loanLimit = 200_000_000;
+    } else if (totalScore >= 400) {
+      rating = 'Trung bình';
+      loanLimit = 50_000_000;
+    } else {
+      rating = 'Thấp';
+      loanLimit = 10_000_000;
     }
 
-    // 5. get list history transactions
-    async getTransactions(username: string): Promise<BankTransaction[]> {
-        return MOCK_TRANSACTIONS[username] || [];
-    }
-
-    // 6. calculate point credit
-    async calculateCreditScore(username: string): Promise<number> {
-        const accounts = MOCK_ACCOUNTS[username] || [];
-        if (accounts.length === 0) return 0;
-
-        const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
-
-        if (totalBalance > 100000000) return 1000;
-        if (totalBalance > 50000000) return 700;
-        if (totalBalance > 10000000) return 500;
-        return 400;
-    }
+    return {
+      score: totalScore,
+      rating,
+      loanLimit,
+      breakdown: {
+        balanceScore,
+        accountsScore,
+        transactionScore,
+      },
+    };
+  }
 }

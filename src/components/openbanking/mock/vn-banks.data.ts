@@ -1,138 +1,135 @@
 import { Bank, BankAccount, BankTransaction } from '../dto/openbanking.dto';
 
-export const VN_BANKS: Bank[] = [
-    {
-        id: 'vcb',
-        shortName: 'Vietcombank',
-        name: 'Ngân hàng TMCP Ngoại thương Việt Nam',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    },
-    {
-        id: 'tcb',
-        shortName: 'Techcombank',
-        name: 'Ngân hàng TMCP Kỹ thương Việt Nam',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    },
-    {
-        id: 'mb',
-        shortName: 'MB Bank',
-        name: 'Ngân hàng TMCP Quân đội',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    },
-    {
-        id: 'bidv',
-        shortName: 'BIDV',
-        name: 'Ngân hàng TMCP Đầu tư và Phát triển Việt Nam',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    },
-    {
-        id: 'vpbank',
-        shortName: 'VPBank',
-        name: 'Ngân hàng TMCP Việt Nam Thịnh Vượng',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    },
-    {
-        id: 'acb',
-        shortName: 'ACB',
-        name: 'Ngân hàng TMCP Á Châu',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    },
-    {
-        id: 'tpbank',
-        shortName: 'TPBank',
-        name: 'Ngân hàng TMCP Tiên Phong',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    },
-    {
-        id: 'vib',
-        shortName: 'VIB',
-        name: 'Ngân hàng TMCP Quốc tế Việt Nam',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    },
-    {
-        id: 'msb',
-        shortName: 'MSB',
-        name: 'Ngân hàng TMCP Hàng Hải Việt Nam',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    },
-    {
-        id: 'hdbank',
-        shortName: 'HDBank',
-        name: 'Ngân hàng TMCP Phát triển Thành phố Hồ Chí Minh',
-        logo: 'https://i.pinimg.com/1200x/a2/9d/29/a29d290535c8a5fd55f67631c7e454f1.jpg'
-    }
-]
+/**
+ * Mock data cho demo - sử dụng mã ngân hàng VietQR thật
+ * Logo lấy từ CDN của VietQR
+ */
 
 export const MOCK_ACCOUNTS: Record<string, BankAccount[]> = {
-    'demo_user': [
-        {
-            id: 'acc_vcb_01',
-            bankId: 'vcb',
-            accountNumber: '0011001234567',
-            accountName: 'NGUYEN VAN A',
-            balance: 150000000, // 150 triệu
-            currency: 'VND',
-            type: 'CURRENT'
-        },
-        {
-            id: 'acc_tcb_01',
-            bankId: 'tcb',
-            accountNumber: '19031234567890',
-            accountName: 'NGUYEN VAN A',
-            balance: 50000000, // 50 triệu
-            currency: 'VND',
-            type: 'SAVINGS'
-        }
-    ]
-}
+  'demo_user': [
+    {
+      id: 'acc_vcb_01',
+      bankId: 'VCB', // VietQR bank code
+      accountNumber: '0011001234567',
+      accountName: 'NGUYEN VAN A',
+      balance: 150000000, // 150 triệu
+      currency: 'VND',
+      type: 'CURRENT'
+    },
+    {
+      id: 'acc_tcb_01',
+      bankId: 'TCB', // VietQR bank code
+      accountNumber: '19031234567890',
+      accountName: 'NGUYEN VAN A',
+      balance: 50000000, // 50 triệu
+      currency: 'VND',
+      type: 'SAVINGS'
+    },
+    {
+      id: 'acc_mb_01',
+      bankId: 'MB', // VietQR bank code
+      accountNumber: '0801234567890',
+      accountName: 'NGUYEN VAN A',
+      balance: 25000000, // 25 triệu
+      currency: 'VND',
+      type: 'CURRENT'
+    }
+  ]
+};
 
 export const MOCK_TRANSACTIONS: Record<string, BankTransaction[]> = {
-    'acc_vcb_01': [
-        {
-            id: 'tx_01',
-            accountId: 'acc_vcb_01',
-            amount: 5000000,
-            type: 'IN',
-            description: 'LUONG THANG 1',
-            date: new Date('2026-01-30'),
-            beneficiary: 'CTY ABC'
-        },
-        {
-            id: 'tx_02',
-            accountId: 'acc_vcb_01',
-            amount: 200000,
-            type: 'OUT',
-            description: 'THANH TOAN DIEN',
-            date: new Date('2026-02-01'),
-            beneficiary: 'EVN'
-        },
-        {
-            id: 'tx_03',
-            accountId: 'acc_vcb_01',
-            amount: 500000,
-            type: 'OUT',
-            description: 'MUA SAM SHOPEE',
-            date: new Date('2026-02-02'),
-            beneficiary: 'SHOPEE'
-        },
-        {
-            id: 'tx_04',
-            accountId: 'acc_vcb_01',
-            amount: 1000000,
-            type: 'OUT',
-            description: 'CHUYEN TIEN',
-            date: new Date('2026-02-03'),
-            beneficiary: 'NGUYEN VAN B'
-        },
-    ],
-    'acc_tcb_01': [
-        {
-            id: 'tx_05',
-            accountId: 'acc_tcb_01',
-            amount: 50000000,
-            type: 'IN',
-            description: 'GUI TIET KIEM',
-            date: new Date('2025-12-01')
-        },
-    ]
-}
+  'acc_vcb_01': [
+    {
+      id: 'tx_01',
+      accountId: 'acc_vcb_01',
+      amount: 15000000,
+      type: 'IN',
+      description: 'LUONG THANG 03/2026',
+      date: new Date('2026-03-30'),
+      beneficiary: 'CTY TNHH ABC'
+    },
+    {
+      id: 'tx_02',
+      accountId: 'acc_vcb_01',
+      amount: 500000,
+      type: 'OUT',
+      description: 'THANH TOAN TIEN DIEN T3',
+      date: new Date('2026-04-01'),
+      beneficiary: 'EVN HA NOI'
+    },
+    {
+      id: 'tx_03',
+      accountId: 'acc_vcb_01',
+      amount: 850000,
+      type: 'OUT',
+      description: 'MUA SAM SHOPEE',
+      date: new Date('2026-04-02'),
+      beneficiary: 'SHOPEE VN'
+    },
+    {
+      id: 'tx_04',
+      accountId: 'acc_vcb_01',
+      amount: 2000000,
+      type: 'OUT',
+      description: 'CHUYEN TIEN CHO B',
+      date: new Date('2026-04-03'),
+      beneficiary: 'NGUYEN VAN B - BIDV'
+    },
+    {
+      id: 'tx_05',
+      accountId: 'acc_vcb_01',
+      amount: 1500000,
+      type: 'IN',
+      description: 'NHAN TIEN TU C',
+      date: new Date('2026-04-04'),
+      beneficiary: 'TRAN VAN C - MB'
+    },
+    {
+      id: 'tx_06',
+      accountId: 'acc_vcb_01',
+      amount: 300000,
+      type: 'OUT',
+      description: 'THANH TOAN GRAB',
+      date: new Date('2026-04-05'),
+      beneficiary: 'GRAB VN'
+    },
+  ],
+  'acc_tcb_01': [
+    {
+      id: 'tx_10',
+      accountId: 'acc_tcb_01',
+      amount: 50000000,
+      type: 'IN',
+      description: 'GUI TIET KIEM KY HAN 6 THANG',
+      date: new Date('2025-12-01')
+    },
+    {
+      id: 'tx_11',
+      accountId: 'acc_tcb_01',
+      amount: 1250000,
+      type: 'IN',
+      description: 'TIEN LAI TIET KIEM',
+      date: new Date('2026-03-01')
+    },
+  ],
+  'acc_mb_01': [
+    {
+      id: 'tx_20',
+      accountId: 'acc_mb_01',
+      amount: 10000000,
+      type: 'IN',
+      description: 'CHUYEN TIEN TU VCB',
+      date: new Date('2026-03-15'),
+      beneficiary: 'NGUYEN VAN A - VCB'
+    },
+    {
+      id: 'tx_21',
+      accountId: 'acc_mb_01',
+      amount: 1200000,
+      type: 'OUT',
+      description: 'THANH TOAN HOA DON NUOC',
+      date: new Date('2026-04-01'),
+      beneficiary: 'CONG TY CP NUOC SACH'
+    },
+  ]
+};

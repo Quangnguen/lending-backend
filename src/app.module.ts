@@ -38,6 +38,9 @@ import { RequestLoggingMiddleware } from '@core/middlewares/request-logging.midd
 import openbankingConfig from '@config/openbanking.config';
 import { OpenBankingModule } from '@components/openbanking/openbanking.module';
 import { CreditModule } from '@components/credit/credit.module';
+import { LoanModule } from '@components/loan/loan.module';
+import { KycModule } from '@components/kyc/kyc.module';
+import { BlockchainModule } from '@components/blockchain/blockchain.module';
 
 @Module({
   imports: [
@@ -93,6 +96,9 @@ import { CreditModule } from '@components/credit/credit.module';
     RedisCacheModule,
     OpenBankingModule,
     CreditModule,
+    LoanModule,
+    KycModule,
+    BlockchainModule,
   ],
   controllers: [AppController],
   providers: [

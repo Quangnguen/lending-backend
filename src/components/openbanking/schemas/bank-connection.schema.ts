@@ -9,28 +9,25 @@ export class BankConnection {
   userId: Types.ObjectId;
 
   @Prop({ required: true })
-  accessToken: string; // Plaid access token
+  bankCode: string; // VietQR bank code (VCB, TCB, MB, ...)
 
   @Prop({ required: true })
-  itemId: string; // Plaid item ID
+  bankName: string; // Tên ngắn ngân hàng
+
+  @Prop()
+  bankLogo: string; // URL logo từ VietQR CDN
 
   @Prop({ required: true })
-  institutionId: string; // Plaid institution ID
+  accountNumber: string; // Số tài khoản (encrypted)
 
   @Prop({ required: true })
-  institutionName: string; // Plaid institution name
-
-  @Prop({ type: [String], default: [] })
-  accounts: string[]; // List of linked account IDs
+  accountName: string; // Tên chủ tài khoản
 
   @Prop({ default: true })
   isActive: boolean;
 
   @Prop()
   lastSyncedAt: Date;
-
-  @Prop()
-  consentExpriesAt: Date; // User consent expiration date
 }
 
 export const BankConnectionSchema =

@@ -1,7 +1,7 @@
 import 'colors';
 import { join } from 'path';
-import * as moment from 'moment';
-import * as morgan from 'morgan';
+import moment from 'moment';
+import morgan from 'morgan';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { IoAdapter } from '@nestjs/platform-socket.io';

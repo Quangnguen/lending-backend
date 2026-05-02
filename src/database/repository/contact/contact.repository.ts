@@ -1,4 +1,4 @@
-import * as moment from 'moment';
+import moment from 'moment';
 import { isEmpty } from 'lodash';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';

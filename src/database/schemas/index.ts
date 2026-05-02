@@ -25,6 +25,7 @@ import { SystemConfig, SystemConfigSchema } from './system-config.model';
 import { PlatformFee, PlatformFeeSchema } from './platform-fee.model';
 import { LoanReport, LoanReportSchema } from './loan-report.model';
 import { AuditLog, AuditLogSchema } from './audit-log.model';
+import { KycRecord, KycRecordSchema } from './kyc-record.model';
 
 export const schemas = [
   { name: User.name, schema: UserSchema },
@@ -45,6 +46,7 @@ export const schemas = [
   { name: PlatformFee.name, schema: PlatformFeeSchema },
   { name: LoanReport.name, schema: LoanReportSchema },
   { name: AuditLog.name, schema: AuditLogSchema },
+  { name: KycRecord.name, schema: KycRecordSchema },
 ];
 
 // Export all models and schemas
@@ -66,3 +68,4 @@ export * from './system-config.model';
 export * from './platform-fee.model';
 export * from './loan-report.model';
 export * from './audit-log.model';
+export * from './kyc-record.model';

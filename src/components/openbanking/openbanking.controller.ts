@@ -5,6 +5,7 @@ import {
   Get,
   Delete,
   Param,
+  Query,
   Request,
 } from '@nestjs/common';
 import {
@@ -12,71 +13,61 @@ import {
   ApiOperation,
   ApiBearerAuth,
   ApiResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
 
 import { OpenBankingService } from './openbanking.service';
-import { CreateLinkTokenResponseDto } from './dto/create-link-token.dto';
-import {
-  ExchangeTokenDto,
-  ExchangeTokenResponseDto,
-} from './dto/exchange-token.dto';
-import { GetTransactionsDto, TransactionDto } from './dto/get-transactions.dto';
 
-@ApiTags('Open Banking')
+@ApiTags('Open Banking - Connections')
 @ApiBearerAuth()
-@Controller('openbanking')
+@Controller('openbanking/connections')
 export class OpenBankingController {
   constructor(private readonly openBankingService: OpenBankingService) {}
 
-  @Post('link-token')
-  @ApiOperation({ summary: 'Create Link Token' })
-  @ApiResponse({ status: 201, type: CreateLinkTokenResponseDto })
-  async createLinkToken(@Request() req): Promise<CreateLinkTokenResponseDto> {
-    const userId = req.user._id.toString();
-    return this.openBankingService.createLinkToken(userId);
-  }
-
-  @Post('exchange-token')
-  @ApiOperation({ summary: 'Exchange Public Token for Access Token' })
-  @ApiResponse({ status: 201, type: ExchangeTokenResponseDto })
-  async exchangePublicToken(
+  @Post()
+  @ApiOperation({ summary: 'Tạo kết nối ngân hàng mới' })
+  async createConnection(
     @Request() req,
-    @Body() dto: ExchangeTokenDto,
-  ): Promise<ExchangeTokenResponseDto> {
-    const userId = req.user._id.toString();
-    return this.openBankingService.exchangePublicToken(userId, dto);
+    @Body() body: any,
+  ) {
+    // ValidationPipe may wrap body into { request, responseError }
+    const data = body.request || body;
+    const userId = req.user?._id?.toString() || data.userId;
+    return this.openBankingService.createConnection(
+      userId,
+      data.bankCode,
+      data.accountNumber,
+      data.accountName,
+    );
   }
 
-  @Post('transactions')
-  @ApiOperation({ summary: 'Get Transactions' })
-  @ApiResponse({ status: 200, type: [TransactionDto] })
-  async getTransactions(
-    @Request() req,
-    @Body() dto: GetTransactionsDto,
-  ): Promise<TransactionDto[]> {
-    const userId = req.user._id.toString();
-    return this.openBankingService.getTransactions(userId, dto);
-  }
-
-  @Get('connections')
-  @ApiOperation({ summary: 'Get Bank Connections' })
+  @Get()
+  @ApiOperation({ summary: 'Lấy danh sách kết nối ngân hàng' })
   async getUserConnections(@Request() req) {
     const userId = req.user._id.toString();
     return this.openBankingService.getUserConnections(userId);
   }
 
-  @Get('connections/:connectionId/balances')
-  @ApiOperation({ summary: 'Get Account Balances for a Bank Connection' })
-  async getConnectionBalances(
+  @Post(':connectionId/qr')
+  @ApiOperation({ summary: 'Tạo QR thanh toán cho kết nối ngân hàng' })
+  @ApiQuery({ name: 'amount', type: Number, required: true })
+  @ApiQuery({ name: 'description', type: String, required: false })
+  async generatePaymentQR(
     @Request() req,
     @Param('connectionId') connectionId: string,
+    @Body() body: { amount: number; description?: string },
   ) {
     const userId = req.user._id.toString();
-    return this.openBankingService.getAccountBalances(userId, connectionId);
+    return this.openBankingService.generatePaymentQR(
+      userId,
+      connectionId,
+      body.amount,
+      body.description || '',
+    );
   }
 
-  @Delete('connections/:connectionId')
-  @ApiOperation({ summary: 'Delete a Bank Connection' })
+  @Delete(':connectionId')
+  @ApiOperation({ summary: 'Ngắt kết nối ngân hàng' })
   async deleteConnection(
     @Request() req,
     @Param('connectionId') connectionId: string,
