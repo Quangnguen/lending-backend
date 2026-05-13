@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Request, UseGuards, Query } from "@nestjs/common";
+import { Controller, Get, Post, Param, Request, UseGuards, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { CreditService } from "./credit.service";
 import { CreditScoringEngine } from "./credit-scoring.engine";
@@ -106,5 +106,38 @@ export class CreditController {
         if (ratio <= 120) return 'Thế chấp tiêu chuẩn (FAIR) — Cần 120% giá trị khoản vay';
         if (ratio <= 135) return 'Thế chấp cao (BELOW FAIR) — Cần 135% giá trị khoản vay';
         return 'Thế chấp đầy đủ (POOR) — Cần 150% giá trị khoản vay (tương tự DeFi thuần túy)';
+    }
+
+    // ===== Admin Endpoints =====
+
+    /**
+     * [Admin] Lấy điểm tín dụng mới nhất của tất cả user (dùng aggregate)
+     * GET /credit/admin/scores
+     */
+    @Get('admin/scores')
+    @ApiOperation({ summary: '[Admin] Get latest credit score of all users' })
+    async getAdminScores() {
+        const latestScores = await this.creditScoringEngine.getLatestScoresForAllUsers();
+        return { success: true, data: latestScores };
+    }
+
+    /**
+     * [Admin] Lấy điểm tín dụng của 1 user theo userId
+     * GET /credit/admin/score/:userId
+     */
+    @Get('admin/score/:userId')
+    @ApiOperation({ summary: '[Admin] Get latest credit score of a specific user' })
+    async getAdminUserScore(@Param('userId') userId: string) {
+        const score = await this.creditScoringEngine.getLatestScore(userId);
+        return {
+            success: true,
+            data: score ? {
+                userId,
+                score: score.score,
+                rating: score.rating,
+                loanLimit: score.loanLimit,
+                calculatedAt: score.calculatedAt,
+            } : { userId, score: 0, rating: 'UNRATED', loanLimit: 0, calculatedAt: null },
+        };
     }
 }

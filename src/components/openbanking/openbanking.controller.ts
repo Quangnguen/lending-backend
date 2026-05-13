@@ -17,12 +17,17 @@ import {
 } from '@nestjs/swagger';
 
 import { OpenBankingService } from './openbanking.service';
+import { MockOpenBankingService } from './mock/mock-openbanking.service';
+import { MOCK_ACCOUNTS } from './mock/vn-banks.data';
 
 @ApiTags('Open Banking - Connections')
 @ApiBearerAuth()
 @Controller('openbanking/connections')
 export class OpenBankingController {
-  constructor(private readonly openBankingService: OpenBankingService) {}
+  constructor(
+    private readonly openBankingService: OpenBankingService,
+    private readonly mockOpenBankingService: MockOpenBankingService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Tạo kết nối ngân hàng mới' })
@@ -45,7 +50,25 @@ export class OpenBankingController {
   @ApiOperation({ summary: 'Lấy danh sách kết nối ngân hàng' })
   async getUserConnections(@Request() req) {
     const userId = req.user._id.toString();
-    return this.openBankingService.getUserConnections(userId);
+    const connections = await this.openBankingService.getUserConnections(userId);
+
+    // Patch balance: nếu DB có balance = 0 (records cũ), lấy từ MOCK_ACCOUNTS trong RAM
+    const mockAccounts = MOCK_ACCOUNTS[userId] || [];
+    const patched = connections.map(conn => {
+      if (conn.balance === 0 && mockAccounts.length > 0) {
+        // Tìm theo 4 số cuối của accountNumber
+        const last4 = conn.accountNumberMask?.replace(/\*/g, '').slice(-4) || '';
+        const mockAcc = mockAccounts.find(a => a.accountNumber?.slice(-4) === last4);
+        if (mockAcc?.balance) {
+          console.log(`[OpenBanking] Patching balance for ${conn.bankCode} from MOCK: ${mockAcc.balance}`);
+          return { ...conn, balance: mockAcc.balance };
+        }
+      }
+      console.log(`[OpenBanking] Connection: bankCode=${conn.bankCode}, balance=${conn.balance}`);
+      return conn;
+    });
+
+    return patched;
   }
 
   @Post(':connectionId/qr')

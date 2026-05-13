@@ -6,6 +6,7 @@ import { CreditScoringEngine } from './credit-scoring.engine';
 import { OraclePublisherService } from '../blockchain/oracle-publisher.service';
 import { CreditScore, CreditScoreSchema } from '@database/schemas/credit-score.model';
 import { Loan, LoanSchema } from '@database/schemas/loan.model';
+import { User, UserSchema } from '@database/schemas/user.model';
 import { OpenBankingModule } from '../openbanking/openbanking.module';
 
 @Module({
@@ -13,6 +14,7 @@ import { OpenBankingModule } from '../openbanking/openbanking.module';
         MongooseModule.forFeature([
             { name: CreditScore.name, schema: CreditScoreSchema },
             { name: Loan.name, schema: LoanSchema },
+            { name: User.name, schema: UserSchema },
         ]),
         OpenBankingModule, // Import để sử dụng OpenBankingService + FinancialAnalyzerService
     ],

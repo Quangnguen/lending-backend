@@ -33,10 +33,10 @@ export class ContactRepository
   }
 
   async getDetail(id: string): Promise<Contact | null> {
-    return await this.contactModel
+    return await this.model
       .findOne({
+        $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
         _id: id,
-        deletedAt: null,
       })
       .populate('respondedBy')
       .exec();
@@ -160,7 +160,7 @@ export class ContactRepository
     }
 
     const pipeline: any[] = [
-      { $match: { deletedAt: null, ...filterObj } },
+      { $match: { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }], ...filterObj } },
       { $sort: sortObj },
     ];
 
@@ -173,7 +173,10 @@ export class ContactRepository
       this.contactModel.aggregate(pipeline),
       !isExport
         ? this.contactModel
-            .countDocuments({ deletedAt: null, ...filterObj })
+            .countDocuments({
+            $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+            ...filterObj,
+          })
             .exec()
         : 0,
     ]);

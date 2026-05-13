@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CreditScore, CreditScoreDocument } from '@database/schemas/credit-score.model';
+import { User, UserDocument } from '@database/schemas/user.model';
 import { OpenBankingService } from '../openbanking/openbanking.service';
 import { MockOpenBankingService } from '../openbanking/mock/mock-openbanking.service';
 
@@ -12,6 +13,8 @@ export class CreditService {
     constructor(
         @InjectModel(CreditScore.name)
         private creditScoreModel: Model<CreditScoreDocument>,
+        @InjectModel(User.name)
+        private userModel: Model<UserDocument>,
         private openBankingService: OpenBankingService,
         private mockOpenBankingService: MockOpenBankingService,
     ) { }
@@ -134,9 +137,10 @@ export class CreditService {
         const loanLimit = Math.round(baseLimit * connectionMultiplier);
 
         // === 4. Lưu vào DB ===
+        const finalScore = Math.round(Math.min(totalScore, 1000));
         const newScore = await this.creditScoreModel.create({
             userId: new Types.ObjectId(userId),
-            score: Math.round(Math.min(totalScore, 1000)),
+            score: finalScore,
             breakdown: {
                 incomeScore,
                 spendingScore,
@@ -147,6 +151,13 @@ export class CreditService {
             rating,
             loanLimit,
             calculatedAt: new Date(),
+        });
+
+        // Update User model so the score is populated correctly in Loan queries
+        await this.userModel.findByIdAndUpdate(userId, {
+            creditScore: finalScore,
+            // Set a default reputation score based on credit score if not present
+            $max: { reputationScore: Math.round(finalScore / 10) }
         });
 
         this.logger.log(

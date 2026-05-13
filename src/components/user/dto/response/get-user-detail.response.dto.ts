@@ -1,4 +1,4 @@
-import { Expose } from 'class-transformer';
+import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 import { BaseResponseDto } from '@core/dto/base.response.dto';
@@ -50,6 +50,7 @@ export class GetUserDetailResponseDto extends BaseResponseDto {
 
   @ApiProperty()
   @Expose()
+  @Transform(({ value }) => (value ? Number(value.toString()) : 0))
   balance: number;
 
   @ApiProperty()
@@ -62,10 +63,12 @@ export class GetUserDetailResponseDto extends BaseResponseDto {
 
   @ApiProperty()
   @Expose()
+  @Transform(({ value }) => (value ? Number(value.toString()) : 0))
   totalBorrowed: number;
 
   @ApiProperty()
   @Expose()
+  @Transform(({ value }) => (value ? Number(value.toString()) : 0))
   totalLent: number;
 
   @ApiProperty()

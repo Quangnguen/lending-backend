@@ -95,7 +95,7 @@ export class User extends BaseModel {
   @Prop({
     type: String,
     enum: Object.values(KYC_STATUS_ENUM),
-    default: KYC_STATUS_ENUM.PENDING,
+    default: KYC_STATUS_ENUM.NOT_STARTED,
   })
   kycStatus: KYC_STATUS_ENUM;
 
@@ -120,8 +120,8 @@ export class User extends BaseModel {
   balance: number;
 
   // ==================== Reputation ====================
-  @Prop({ type: Number, default: 500, min: 300, max: 850 })
-  creditScore: number; // 300-850
+  @Prop({ type: Number, default: 0, min: 0, max: 850 })
+  creditScore: number; // 0 (Chưa có điểm) hoặc 300-850 (Đã chấm điểm)
 
   @Prop({ type: Number, default: 0 })
   reputationScore: number;

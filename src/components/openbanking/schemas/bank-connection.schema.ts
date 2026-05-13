@@ -23,6 +23,15 @@ export class BankConnection {
   @Prop({ required: true })
   accountName: string; // Tên chủ tài khoản
 
+  @Prop({ default: 0 })
+  balance: number; // Số dư tại thời điểm liên kết (VND)
+
+  @Prop({ default: 'VND' })
+  currency: string;
+
+  @Prop({ default: 'CURRENT' })
+  accountType: string;
+
   @Prop({ default: true })
   isActive: boolean;
 

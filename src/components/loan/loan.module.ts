@@ -14,7 +14,7 @@ import { User, UserSchema } from '@database/schemas/user.model';
 import { CreditModule } from '../credit/credit.module';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { OpenBankingModule } from '../openbanking/openbanking.module';
-import { ScheduleModule } from '@nestjs/schedule';
+import { NotificationModule } from '../notification/notification.module';
 
 
 @Module({
@@ -30,7 +30,7 @@ import { ScheduleModule } from '@nestjs/schedule';
         CreditModule,
         BlockchainModule,
         OpenBankingModule,
-        ScheduleModule.forRoot(),
+        NotificationModule,
     ],
     controllers: [LoanController],
     providers: [LoanService, LenderMarketplaceService, DisbursementService, LiquidationService],

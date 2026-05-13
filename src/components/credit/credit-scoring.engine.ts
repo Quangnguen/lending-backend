@@ -192,12 +192,44 @@ export class CreditScoringEngine {
             .lean();
     }
 
+    /**
+     * [Admin] Lấy điểm mới nhất của TẤT CẢ user bằng 1 aggregate query
+     * Trả về: { userId → { score, rating, loanLimit, calculatedAt } }
+     */
+    async getLatestScoresForAllUsers(): Promise<Record<string, any>> {
+        const latest = await this.creditScoreModel.aggregate([
+            { $sort: { createdAt: -1 } },
+            {
+                $group: {
+                    _id: '$userId',
+                    score: { $first: '$score' },
+                    rating: { $first: '$rating' },
+                    loanLimit: { $first: '$loanLimit' },
+                    calculatedAt: { $first: '$calculatedAt' },
+                }
+            }
+        ]);
+
+        // Map thành { "userId": scoreData }
+        const result: Record<string, any> = {};
+        for (const item of latest) {
+            result[item._id.toString()] = {
+                score: item.score,
+                rating: item.rating,
+                loanLimit: item.loanLimit,
+                calculatedAt: item.calculatedAt,
+            };
+        }
+        return result;
+    }
+
     async getScoreHistory(userId: string, limit = 10): Promise<CreditScore[]> {
         return this.creditScoreModel.find({ userId: new Types.ObjectId(userId) })
             .sort({ createdAt: -1 })
             .limit(limit)
             .lean();
     }
+
 
     // ==========================================
     // BLOCKCHAIN ORACLE PUBLISHING

@@ -85,8 +85,8 @@ export class UserRepository
   async getDetail(id: string): Promise<User | null> {
     return await this.userModel
       .findOne({
+        $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
         _id: id,
-        deletedAt: null,
       })
       .select('-passwordHash')
       .exec();
@@ -285,8 +285,21 @@ export class UserRepository
     }
 
     const pipeline: any[] = [
-      { $match: { deletedAt: null, ...filterObj } },
+      {
+        $match: {
+          // Fix: match cả deletedAt = null lẫn field không tồn tại
+          $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+          ...filterObj,
+        },
+      },
       { $sort: sortObj },
+      {
+        $addFields: {
+          balance: { $toDouble: { $ifNull: ['$balance', 0] } },
+          totalBorrowed: { $toDouble: { $ifNull: ['$totalBorrowed', 0] } },
+          totalLent: { $toDouble: { $ifNull: ['$totalLent', 0] } },
+        },
+      },
       {
         $project: {
           passwordHash: 0,
@@ -303,7 +316,11 @@ export class UserRepository
       this.userModel.aggregate(pipeline),
       !isExport
         ? this.userModel
-            .countDocuments({ deletedAt: null, ...filterObj })
+            .countDocuments({
+              // Fix: count cả deletedAt = null lẫn field không tồn tại
+              $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+              ...filterObj,
+            })
             .exec()
         : 0,
     ]);
@@ -313,7 +330,7 @@ export class UserRepository
 
   async getSummaryUsers(): Promise<{ role: string; count: number }[]> {
     const summary = await this.userModel.aggregate([
-      { $match: { deletedAt: null } },
+      { $match: { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] } },
       {
         $group: {
           _id: '$role',
@@ -465,18 +482,18 @@ export class UserRepository
 
   // ==================== Search Methods ====================
   async findByEmail(email: string): Promise<User | null> {
-    return this.userModel.findOne({ email, deletedAt: null });
+    return this.userModel.findOne({ email, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
   }
 
   async findByPhone(phone: string): Promise<User | null> {
-    return this.userModel.findOne({ phone, deletedAt: null });
+    return this.userModel.findOne({ phone, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
   }
 
   async findByWalletAddress(walletAddress: string): Promise<User | null> {
-    return this.userModel.findOne({ walletAddress, deletedAt: null });
+    return this.userModel.findOne({ walletAddress, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
   }
 
   async findByIdCardNumber(idCardNumber: string): Promise<User | null> {
-    return this.userModel.findOne({ idCardNumber, deletedAt: null });
+    return this.userModel.findOne({ idCardNumber, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
   }
 }

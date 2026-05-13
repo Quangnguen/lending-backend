@@ -11,6 +11,7 @@ import { BlockchainService } from "../blockchain/blockchain.service";
 import { OpenBankingService } from "../openbanking/openbanking.service";
 import { MockOpenBankingService } from "../openbanking/mock/mock-openbanking.service";
 import { VietQRService } from "../openbanking/vietqr.service";
+import { NotificationService } from "../notification/notification.service";
 import { CreateLoanRequestDto } from "./dto/create-loan-request.dto";
 import { FundLoanDto } from "./dto/fund-loan.dto";
 import { RepayLoanDto } from "./dto/repay-loan.dto";
@@ -39,6 +40,7 @@ export class LoanService {
         private mockOpenBankingService: MockOpenBankingService,
         private vietQRService: VietQRService,
         @InjectModel(User.name) private userModel: Model<UserDocument>,
+        private notificationService: NotificationService,
     ) { }
 
     // ========================================
@@ -62,14 +64,61 @@ export class LoanService {
         }
 
         // 2. Validate loan amount vs credit limit (nếu có credit score)
-        if (creditScore && creditScore.loanLimit > 0 && dto.loanAmount > creditScore.loanLimit) {
-            throw new BadRequestException(
-                `Số tiền vay (${dto.loanAmount} USDT) vượt quá hạn mức tín dụng (${creditScore.loanLimit} USDT). ` +
-                `Credit Score: ${creditScore.score}/1000, Rating: ${creditScore.rating}`
+        if (creditScore && creditScore.loanLimit > 0) {
+            // Kiểm tra khoản vay đơn lẻ không vượt hạn mức
+            if (dto.loanAmount > creditScore.loanLimit) {
+                throw new BadRequestException(
+                    `Số tiền vay (${dto.loanAmount} USDT) vượt quá hạn mức tín dụng (${creditScore.loanLimit} USDT). ` +
+                    `Credit Score: ${creditScore.score}/1000, Rating: ${creditScore.rating}`
+                );
+            }
+
+            // Tính tổng dư nợ hiện tại (pending requests + active/overdue loans)
+            const [pendingRequests, activeLoans] = await Promise.all([
+                this.loanRequestModel.find({
+                    borrowerId: new Types.ObjectId(userId),
+                    status: LOAN_REQUEST_STATUS_ENUM.PENDING,
+                }).lean(),
+                this.loanModel.find({
+                    borrowerId: new Types.ObjectId(userId),
+                    status: { $in: [LOAN_STATUS_ENUM.ACTIVE, LOAN_STATUS_ENUM.OVERDUE] },
+                }).lean(),
+            ]);
+
+            const totalPending = pendingRequests.reduce(
+                (sum, req) => sum + (parseFloat(req.loanAmount?.toString()) || 0), 0
             );
+            const totalActive = activeLoans.reduce(
+                (sum, loan) => sum + (parseFloat(loan.remainingAmount?.toString()) || parseFloat(loan.principalAmount?.toString()) || 0), 0
+            );
+            const totalOutstanding = totalPending + totalActive;
+
+            if (totalOutstanding + dto.loanAmount > creditScore.loanLimit) {
+                const availableAmount = Math.max(0, creditScore.loanLimit - totalOutstanding);
+                throw new BadRequestException(
+                    `Vượt hạn mức tín dụng. ` +
+                    `Hạn mức: ${creditScore.loanLimit} USDT, ` +
+                    `Đang vay/chờ duyệt: ${Math.round(totalOutstanding)} USDT, ` +
+                    `Còn khả dụng: ${Math.round(availableAmount)} USDT.`
+                );
+            }
+
+            // Giới hạn tối đa 3 request pending
+            if (pendingRequests.length >= 3) {
+                throw new BadRequestException('Bạn đã có 3 yêu cầu vay đang chờ. Vui lòng chờ xử lý hoặc hủy bớt.');
+            }
+        } else {
+            // Không có credit score → vẫn giới hạn số pending requests
+            const pendingCount = await this.loanRequestModel.countDocuments({
+                borrowerId: new Types.ObjectId(userId),
+                status: LOAN_REQUEST_STATUS_ENUM.PENDING,
+            });
+            if (pendingCount >= 3) {
+                throw new BadRequestException('Bạn đã có 3 yêu cầu vay đang chờ. Vui lòng chờ xử lý hoặc hủy bớt.');
+            }
         }
 
-        // 2.5 Kiểm tra liên kết ngân hàng (khuyến nghị)
+        // 3. Kiểm tra liên kết ngân hàng (khuyến nghị)
         let bankConnectionInfo = null;
         try {
             const bankConnections = await this.openBankingService.getUserConnections(userId);
@@ -84,15 +133,6 @@ export class LoanService {
             }
         } catch (error) {
             this.logger.warn(`Không thể kiểm tra bank connections: ${error.message}`);
-        }
-
-        // 3. Kiểm tra không có request pending nào quá nhiều
-        const pendingCount = await this.loanRequestModel.countDocuments({
-            borrowerId: new Types.ObjectId(userId),
-            status: LOAN_REQUEST_STATUS_ENUM.PENDING,
-        });
-        if (pendingCount >= 3) {
-            throw new BadRequestException('Bạn đã có 3 yêu cầu vay đang chờ. Vui lòng chờ xử lý hoặc hủy bớt.');
         }
 
         // 4. Tạo LoanRequest trong MongoDB
@@ -348,6 +388,15 @@ export class LoanService {
             this.blockchainService.attachSingleLoanListener(dto.loanContractAddress);
         }
 
+        // 7. Tạo thông báo cho người vay
+        await this.notificationService.createNotification(
+            request.borrowerId.toString(),
+            'Giải ngân thành công!',
+            `Yêu cầu vay ${request.loanAmount} USDT của bạn đã được đầu tư và giải ngân thành công.`,
+            'LOAN',
+            loan._id.toString()
+        );
+
         this.logger.log(`💰 Loan funded: ${loan._id} - ${request.loanAmount} USDT - Lender: ${lenderId}`);
 
         return {
@@ -477,6 +526,19 @@ export class LoanService {
 
         await loan.save();
 
+        // 6. Gửi thông báo cho Lender
+        if (loan.lenderId) {
+            await this.notificationService.createNotification(
+                loan.lenderId.toString(),
+                loan.status === LOAN_STATUS_ENUM.REPAID ? 'Khoản đầu tư đã được tất toán!' : 'Đã nhận được thanh toán một phần',
+                loan.status === LOAN_STATUS_ENUM.REPAID 
+                    ? `Người vay đã thanh toán toàn bộ khoản vay ${loan.amountPaid} USDT.`
+                    : `Người vay vừa thanh toán ${dto.amount} USDT. Số dư nợ còn lại: ${loan.remainingAmount} USDT.`,
+                'TRANSACTION',
+                loan._id.toString()
+            );
+        }
+
         this.logger.log(`✅ Loan repaid: ${loanId} - Amount: ${dto.amount} USDT - User: ${userId}`);
 
         return {
@@ -513,6 +575,15 @@ export class LoanService {
             throw new NotFoundException('Khoản vay không tồn tại');
         }
 
+        // Lấy điểm tín dụng trực tiếp từ bảng CreditScore
+        if (loan.borrowerId && (loan.borrowerId as any)._id) {
+            const latestScore = await this.creditScoringEngine.getLatestScore((loan.borrowerId as any)._id.toString());
+            if (latestScore) {
+                (loan.borrowerId as any).creditScoreDetail = latestScore;
+                (loan.borrowerId as any).creditScore = latestScore.score;
+            }
+        }
+
         // Lấy thêm on-chain status nếu có contract address
         let onChainStatus = null;
         if (loan.loanContractAddress) {
@@ -539,6 +610,17 @@ export class LoanService {
 
         if (!request) {
             throw new NotFoundException('Yêu cầu vay không tồn tại');
+        }
+
+        // Lấy điểm tín dụng trực tiếp từ bảng CreditScore
+        if (request.borrowerId && (request.borrowerId as any)._id) {
+            const latestScore = await this.creditScoringEngine.getLatestScore((request.borrowerId as any)._id.toString());
+            if (latestScore) {
+                // Ghi đè creditScore từ bảng user bằng object chi tiết từ bảng creditscores
+                (request.borrowerId as any).creditScoreDetail = latestScore;
+                // Vẫn cập nhật số điểm vào field cũ để tránh lỗi UI hiện tại
+                (request.borrowerId as any).creditScore = latestScore.score;
+            }
         }
 
         return request;

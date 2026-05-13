@@ -44,6 +44,9 @@ export class OpenBankingService {
     bankCode: string,
     accountNumber: string,
     accountName: string,
+    balance: number = 0,       // Số dư tại thời điểm liên kết
+    currency: string = 'VND',
+    accountType: string = 'CURRENT',
   ) {
     const bank = await this.vietqrService.findBankByCode(bankCode);
     if (!bank) {
@@ -53,23 +56,44 @@ export class OpenBankingService {
     // Encrypt account number for security
     const encryptedAccount = this.encryptToken(accountNumber);
 
-    const connection = await this.bankConnectionModel.create({
+    // Kiểm tra trùng: nếu đã có connection cho user + bankCode + accountNumber này thì update
+    const existing = await this.bankConnectionModel.findOne({
       userId: new Types.ObjectId(userId),
-      bankCode: bankCode,
-      bankName: bank.shortName,
-      bankLogo: bank.logo,
-      accountNumber: encryptedAccount,
-      accountName: accountName,
+      bankCode,
       isActive: true,
-      lastSyncedAt: new Date(),
-    });
+    }).lean();
+
+    let connection;
+    if (existing) {
+      // Update balance mới
+      connection = await this.bankConnectionModel.findByIdAndUpdate(
+        existing._id,
+        { balance, lastSyncedAt: new Date() },
+        { new: true },
+      );
+    } else {
+      connection = await this.bankConnectionModel.create({
+        userId: new Types.ObjectId(userId),
+        bankCode,
+        bankName: bank.shortName,
+        bankLogo: bank.logo,
+        accountNumber: encryptedAccount,
+        accountName,
+        balance,
+        currency,
+        accountType,
+        isActive: true,
+        lastSyncedAt: new Date(),
+      });
+    }
 
     return {
       connectionId: connection._id.toString(),
-      bankCode: bankCode,
+      bankCode,
       bankName: bank.shortName,
       bankLogo: bank.logo,
-      accountName: accountName,
+      accountName,
+      balance,
       accountNumberMask: this.maskAccountNumber(accountNumber),
     };
   }
@@ -89,6 +113,9 @@ export class OpenBankingService {
       bankName: conn.bankName,
       bankLogo: conn.bankLogo,
       accountName: conn.accountName,
+      balance: conn.balance || 0,        // Số dư lưu trong DB
+      currency: conn.currency || 'VND',
+      accountType: conn.accountType || 'CURRENT',
       accountNumberMask: this.maskAccountNumber(
         this.decryptToken(conn.accountNumber),
       ),

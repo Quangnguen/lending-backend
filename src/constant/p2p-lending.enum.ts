@@ -1,8 +1,9 @@
 // ==================== USER ENUMS ====================
 export enum KYC_STATUS_ENUM {
-  PENDING = 'pending',
-  VERIFIED = 'verified',
-  REJECTED = 'rejected',
+  NOT_STARTED = 'not_started', // User mới tạo chưa bắt đầu KYC
+  PENDING = 'pending',         // Đang trong quá trình xác thực
+  VERIFIED = 'verified',       // Đã xác minh thành công
+  REJECTED = 'rejected',       // Bị từ chối
 }
 
 export enum USER_STATUS_ENUM {

@@ -103,20 +103,21 @@ export class MockOpenBankingService {
       };
 
       // Lưu account vào MOCK_ACCOUNTS để getAccounts() trả về
-      // Tránh trùng lặp: kiểm tra theo bankId + accountNumber
-      if (!MOCK_ACCOUNTS['demo_user']) {
-        MOCK_ACCOUNTS['demo_user'] = [];
+      // Sử dụng userId làm key để phân tách dữ liệu giữa các user
+      const accountKey = userId || 'anonymous';
+      if (!MOCK_ACCOUNTS[accountKey]) {
+        MOCK_ACCOUNTS[accountKey] = [];
       }
-      const existingIndex = MOCK_ACCOUNTS['demo_user'].findIndex(
+      const existingIndex = MOCK_ACCOUNTS[accountKey].findIndex(
         (acc) => acc.bankId === session.bankCode && acc.accountNumber === session.accountNumber,
       );
       if (existingIndex >= 0) {
-        MOCK_ACCOUNTS['demo_user'][existingIndex] = newAccount;
+        MOCK_ACCOUNTS[accountKey][existingIndex] = newAccount;
       } else {
-        MOCK_ACCOUNTS['demo_user'].push(newAccount);
+        MOCK_ACCOUNTS[accountKey].push(newAccount);
       }
 
-      // === PERSIST vào MongoDB để validateUserFlow tìm thấy ===
+      // === PERSIST vào MongoDB (kèm balance) ===
       if (userId) {
         try {
           await this.openBankingService.createConnection(
@@ -124,8 +125,11 @@ export class MockOpenBankingService {
             session.bankCode,
             session.accountNumber,
             session.accountName,
+            newAccount.balance,   // Lưu balance vào DB
+            'VND',
+            'CURRENT',
           );
-          this.logger.log(`✅ Persisted bank connection to MongoDB for user ${userId}`);
+          this.logger.log(`✅ Persisted bank connection (balance: ${newAccount.balance}) to MongoDB for user ${userId}`);
         } catch (err) {
           this.logger.warn(`⚠️ Failed to persist bank connection to MongoDB: ${err.message}`);
           // Không throw - mock flow vẫn thành công

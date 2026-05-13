@@ -68,7 +68,7 @@ export class AuthService {
 
     @Inject('UserSessionRepositoryInterface')
     private readonly userSessionRepository: UserSessionRepositoryInterface,
-  ) {}
+  ) { }
 
   async register(request: RegisterUserRequestDto) {
     const { email, phoneNumber } = request;
@@ -108,6 +108,7 @@ export class AuthService {
     const otp = generateRandomString(6, 'numeric'); // Giả sử hàm này tạo string số 6 chữ số
     const cacheKey = `otp:${email}`;
     await this.cacheManager.set(cacheKey, otp, 300000); // 5 phút
+    this.logger.log(`OTP for register ${email}: ${otp}`);
 
     // Gửi email
     this.eventEmitter.emit(EVENT_ENUM.SEND_MAIL, {
@@ -136,7 +137,7 @@ export class AuthService {
       );
     }
 
-    if (!user.isVerified) {
+    if (!user.isVerified && user.role !== ROLE_ENUM.ADMIN && user.role !== ROLE_ENUM.SUPER_ADMIN) {
       throw new BusinessException(
         this.i18n.translate('error.EMAIL_NOT_VERIFIED'),
         ResponseCodeEnum.BAD_REQUEST,
@@ -164,6 +165,18 @@ export class AuthService {
         this.i18n.translate('error.EMAIL_OR_PASSWORD_INVALID'),
         ResponseCodeEnum.BAD_REQUEST,
       );
+    }
+
+    // Bypass OTP cho đăng nhập từ Admin Portal (deviceType: web)
+    // Admin portal đã có bảo vệ riêng qua NextAuth session
+    if (deviceType === DEVICE_TYPE_ENUM.WEB) {
+      this.logger.log(`Admin Portal bypass OTP for: ${email} (role: ${user.role})`);
+      return await this.buildDataLoginSuccess(user, {
+        deviceId,
+        deviceName,
+        deviceType,
+        isTrusted: true,
+      });
     }
 
     // Check if device is trusted
@@ -197,6 +210,7 @@ export class AuthService {
     const otp = generateRandomString(6, 'numeric');
     const cacheKey = `login-otp:${email}`;
     await this.cacheManager.set(cacheKey, otp, 300000); // 5 minutes
+
 
     this.logger.log(`Login OTP for ${email}: ${otp}`);
 
