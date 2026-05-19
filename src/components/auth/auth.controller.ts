@@ -148,6 +148,25 @@ export class AuthController {
     return await this.authService.updateMe(request);
   }
 
+  /**
+   * Cập nhật địa chỉ ví Ganache — endpoint riêng
+   * Không yêu cầu các field khác (fullName, avatarUrl, gender)
+   * Chỉ cần token hợp lệ
+   */
+  @Put('/me/wallet')
+  @ApiOperation({
+    tags: ['Auth'],
+    summary: 'Cập nhật địa chỉ ví Ganache/Ethereum',
+    description: 'Liên kết ví blockchain với tài khoản',
+  })
+  @ApiResponse({ status: 200, description: 'Success' })
+  async updateWallet(
+    @Request() req,
+    @Body() body: { walletAddress: string },
+  ) {
+    return await this.authService.updateWallet(req.user, body.walletAddress);
+  }
+
   @Put('/change-password')
   @ApiOperation({
     tags: ['Auth'],

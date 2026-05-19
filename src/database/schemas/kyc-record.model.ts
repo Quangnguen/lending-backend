@@ -25,7 +25,7 @@ export class KycRecord {
 
   @Prop({ type: Object })
   idInfo: {
-    id?: string;
+    id?: string;           // Số CCCD/CMND — kiểm tra trùng lặp
     name?: string;
     dob?: string;
     sex?: string;
@@ -51,3 +51,11 @@ export class KycRecord {
 }
 
 export const KycRecordSchema = SchemaFactory.createForClass(KycRecord);
+
+/**
+ * Index thưa (sparse) trên trường idInfo.id:
+ * - unique: mỗi số CCCD chỉ được ký kết bởi 1 tài khoản
+ * - sparse: bỏ qua bản ghi chưa có trường này (KYC chưa bắt đầu)
+ */
+KycRecordSchema.index({ 'idInfo.id': 1 }, { unique: true, sparse: true });
+

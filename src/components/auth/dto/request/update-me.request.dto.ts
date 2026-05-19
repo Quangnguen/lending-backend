@@ -5,6 +5,7 @@ import {
   IsString,
   IsNotEmpty,
   IsOptional,
+  Matches,
 } from 'class-validator';
 
 import { BaseDto } from '@core/dto/base.request.dto';
@@ -28,4 +29,12 @@ export class UpdateMeRequestDto extends BaseDto {
   @IsNotEmpty()
   @IsEnum(GENDER_ENUM)
   gender: GENDER_ENUM;
+
+  // Địa chỉ ví Ethereum (Ganache/MetaMask)
+  @IsOptional()
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{40}$/, {
+    message: 'walletAddress phải là địa chỉ Ethereum hợp lệ (0x + 40 ký tự hex)',
+  })
+  walletAddress?: string;
 }

@@ -17,7 +17,7 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { FptAiService, IDRecognitionResult } from './fptai.service';
+import { LocalKycService, IDRecognitionResult } from './local-kyc.service';
 import { KycService } from './kyc.service';
 
 @ApiTags('KYC - Xác thực danh tính')
@@ -26,7 +26,7 @@ export class KycController {
   private readonly logger = new Logger(KycController.name);
 
   constructor(
-    private readonly fptAiService: FptAiService,
+    private readonly fptAiService: LocalKycService,
     private readonly kycService: KycService,
   ) { }
 

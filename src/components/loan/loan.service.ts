@@ -146,6 +146,7 @@ export class LoanService {
             collateralType: dto.collateralType,
             collateralAmount: dto.collateralAmount || 0,
             status: LOAN_REQUEST_STATUS_ENUM.PENDING,
+            onChainRequestId: dto.onChainRequestId,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 ngày
         });
 
@@ -324,7 +325,7 @@ export class LoanService {
 
         return this.loanRequestModel.find(query)
             .sort({ createdAt: -1 })
-            .populate('borrowerId', 'fullName email avatarUrl creditScore reputationScore successfulLoans')
+            .populate('borrowerId', 'fullName email avatarUrl creditScore reputationScore successfulLoans walletAddress')
             .lean();
     }
 
@@ -342,10 +343,12 @@ export class LoanService {
             throw new BadRequestException(`Yêu cầu vay không ở trạng thái chờ (hiện tại: ${request.status})`);
         }
 
-        // Không cho phép tự cho mình vay
-        if (request.borrowerId.toString() === lenderId.toString()) {
-            throw new ForbiddenException('Không thể cấp vốn cho chính mình');
-        }
+        // Không cho phép tự cho mình vay (kiểm tra cả MongoDB ID lẫn ví blockchain)
+        // Với Ganache demo: cho phép cùng 1 user nhưng dùng ví khác nhau
+        // Comment out check by MongoDB ID để hỗ trợ kịch bản demo single-user
+        // if (request.borrowerId.toString() === lenderId.toString()) {
+        //     throw new ForbiddenException('Không thể cấp vốn cho chính mình');
+        // }
 
         // 2. Verify transaction on blockchain (nếu có txHash)
         if (dto.txHash) {
@@ -391,8 +394,8 @@ export class LoanService {
         // 7. Tạo thông báo cho người vay
         await this.notificationService.createNotification(
             request.borrowerId.toString(),
-            'Giải ngân thành công!',
-            `Yêu cầu vay ${request.loanAmount} USDT của bạn đã được đầu tư và giải ngân thành công.`,
+            '🎉 Giải ngân thành công!',
+            `Tin vui! Khoản vay ${request.loanAmount} USDT của bạn đã được nhà đầu tư rót vốn. Hãy kiểm tra số dư ví USDT của bạn ngay!`,
             'LOAN',
             loan._id.toString()
         );
@@ -416,32 +419,61 @@ export class LoanService {
 
     /** Lấy lịch sử giao dịch gần đây (trả nợ, cấp vốn) */
     async getMyTransactions(userId: string) {
-        // Lấy lịch sử trả nợ (borrower trả nợ hoặc lender nhận tiền)
-        const repayments = await this.repaymentModel.find({
-            $or: [
-                { payerId: new Types.ObjectId(userId) },
-                // Thêm logic nếu muốn lender cũng thấy tiền về ở đây
-            ]
-        })
-            .sort({ createdAt: -1 })
-            .limit(10)
-            .populate({
-                path: 'loanId',
-                select: 'principalAmount interestRate durationDays',
-                populate: { path: 'borrowerId lenderId', select: 'fullName' }
-            })
-            .lean();
+        const userIdObj = new Types.ObjectId(userId);
 
-        // Map lại format giao dịch đồng nhất
-        return repayments.map(rp => ({
-            _id: rp._id,
-            type: rp.payerId.toString() === userId.toString() ? 'PAYMENT' : 'RECEIPT',
-            amount: rp.totalAmount,
-            status: rp.status,
-            date: rp.paidAt || rp.createdAt,
-            loanInfo: rp.loanId,
-            txHash: rp.txHash
-        }));
+        // 1. Lấy tất cả khoản vay liên quan đến user
+        const loans = await this.loanModel.find({
+            $or: [
+                { borrowerId: userIdObj },
+                { lenderId: userIdObj }
+            ]
+        }).populate('borrowerId lenderId', 'fullName').lean();
+
+        const loanIds = loans.map(l => l._id);
+
+        // 2. Lấy tất cả lịch sử trả nợ cho các khoản vay này
+        const repayments = await this.repaymentModel.find({
+            loanId: { $in: loanIds }
+        }).lean();
+
+        const transactions = [];
+
+        // 3. Map giao dịch giải ngân (Funding)
+        for (const loan of loans) {
+            const isBorrower = loan.borrowerId?._id?.toString() === userId.toString() || loan.borrowerId?.toString() === userId.toString();
+            
+            transactions.push({
+                _id: `fund_${loan._id}`,
+                type: isBorrower ? 'RECEIPT' : 'PAYMENT', // Nhận tiền giải ngân = RECEIPT, Cấp vốn = PAYMENT
+                amount: loan.principalAmount,
+                status: 'COMPLETED',
+                date: loan.startDate || loan.createdAt,
+                loanInfo: loan,
+                txHash: loan.fundTxHash
+            });
+        }
+
+        // 4. Map giao dịch trả nợ (Repayment)
+        for (const rp of repayments) {
+            const loan = loans.find(l => l._id.toString() === rp.loanId.toString());
+            if (!loan) continue;
+            
+            const isPayer = rp.payerId?.toString() === userId.toString();
+            
+            transactions.push({
+                _id: rp._id,
+                type: isPayer ? 'PAYMENT' : 'RECEIPT', // Trả nợ = PAYMENT, Nhận nợ = RECEIPT
+                amount: rp.totalAmount,
+                status: rp.status,
+                date: rp.paidAt || rp.createdAt,
+                loanInfo: loan,
+                txHash: rp.txHash
+            });
+        }
+
+        // 5. Sort theo ngày (mới nhất trước) và trả về max 10
+        transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        return transactions.slice(0, 10);
     }
 
     // ========================================
@@ -531,7 +563,7 @@ export class LoanService {
             await this.notificationService.createNotification(
                 loan.lenderId.toString(),
                 loan.status === LOAN_STATUS_ENUM.REPAID ? 'Khoản đầu tư đã được tất toán!' : 'Đã nhận được thanh toán một phần',
-                loan.status === LOAN_STATUS_ENUM.REPAID 
+                loan.status === LOAN_STATUS_ENUM.REPAID
                     ? `Người vay đã thanh toán toàn bộ khoản vay ${loan.amountPaid} USDT.`
                     : `Người vay vừa thanh toán ${dto.amount} USDT. Số dư nợ còn lại: ${loan.remainingAmount} USDT.`,
                 'TRANSACTION',
@@ -561,6 +593,7 @@ export class LoanService {
         let loan = await this.loanModel.findById(loanId)
             .populate('borrowerId', 'fullName email avatarUrl walletAddress creditScore')
             .populate('lenderId', 'fullName email avatarUrl walletAddress')
+            .populate('requestId', 'collateralAmount')
             .lean();
 
         // Fallback: tìm bằng requestId nếu không tìm thấy trực tiếp
@@ -568,6 +601,7 @@ export class LoanService {
             loan = await this.loanModel.findOne({ requestId: new Types.ObjectId(loanId) })
                 .populate('borrowerId', 'fullName email avatarUrl walletAddress creditScore')
                 .populate('lenderId', 'fullName email avatarUrl walletAddress')
+                .populate('requestId', 'collateralAmount')
                 .lean();
         }
 
@@ -595,8 +629,20 @@ export class LoanService {
             .sort({ createdAt: -1 })
             .lean();
 
+        // Extract collateralAmount từ requestId đã populate
+        let collateralAmount = 0;
+        if (loan.requestId && (loan.requestId as any).collateralAmount !== undefined) {
+             const ca = (loan.requestId as any).collateralAmount;
+             if (ca && ca.$numberDecimal) {
+                 collateralAmount = parseFloat(ca.$numberDecimal);
+             } else {
+                 collateralAmount = parseFloat(ca.toString() || '0');
+             }
+        }
+
         return {
             ...loan,
+            collateralAmount,
             onChainStatus,
             repayments,
         };
@@ -605,7 +651,7 @@ export class LoanService {
     /** Chi tiết yêu cầu vay */
     async getLoanRequestDetail(requestId: string) {
         const request = await this.loanRequestModel.findById(requestId)
-            .populate('borrowerId', 'fullName email avatarUrl creditScore reputationScore')
+            .populate('borrowerId', 'fullName email avatarUrl creditScore reputationScore walletAddress')
             .lean();
 
         if (!request) {
@@ -746,7 +792,7 @@ export class LoanService {
         if (!isBorrower && !isLender) {
             throw new ForbiddenException('Bạn không có quyền xem thông tin này');
         }
-        
+
         // Lấy bank connections của cả 2 bên
         const [borrowerBanks, lenderBanks] = await Promise.all([
             this.openBankingService.getUserConnections(loan.borrowerId.toString()),

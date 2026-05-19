@@ -112,6 +112,15 @@ export class Loan extends BaseModel {
 
   @Prop({ type: Date })
   repaidAt: Date;
+
+  // ==================== DebtToken (nợ xấu on-chain) ====================
+  /** Đã mint DebtToken chưa? Dùng để tránh mint 2 lần */
+  @Prop({ type: Boolean, default: false })
+  debtTokenMinted: boolean;
+
+  /** TxHash của giao dịch mint DebtToken trên blockchain */
+  @Prop({ type: String, maxlength: 66 })
+  debtTokenTxHash: string;
 }
 
 export const LoanSchema = SchemaFactory.createForClass(Loan);

@@ -33,6 +33,8 @@ export interface UserRepositoryInterface extends BaseInterfaceRepository<User> {
 
   updateBalance(id: string, amount: number): Promise<User | null>;
 
+  updateWalletAddress(id: string, walletAddress: string): Promise<User | null>;
+
   updateCreditScore(id: string, score: number): Promise<User | null>;
 
   updateLoanStats(

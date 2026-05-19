@@ -264,6 +264,24 @@ export class AuthService {
       .build();
   }
 
+  async updateWallet(user: any, walletAddress: string) {
+    // Validate format
+    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      throw new BusinessException(
+        'walletAddress phải là địa chỉ Ethereum hợp lệ',
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    await this.userRepository.updateWalletAddress(user._id.toString(), walletAddress);
+    this.logger.log(`Wallet updated for user ${user.email}: ${walletAddress}`);
+
+    return new ResponseBuilder({ walletAddress })
+      .withCode(ResponseCodeEnum.SUCCESS)
+      .withMessage(this.i18n.translate('message.SUCCESS'))
+      .build();
+  }
+
   async changePassword(request: ChangePasswordRequestDto) {
     const { user, oldPassword, newPassword } = request;
 

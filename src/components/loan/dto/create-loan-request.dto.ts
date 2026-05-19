@@ -37,4 +37,9 @@ export class CreateLoanRequestDto {
     @IsOptional()
     @IsNumber()
     collateralAmount?: number;
+
+    @ApiProperty({ description: 'ID của LoanRequest trên Smart Contract' })
+    @IsOptional()
+    @IsNumber()
+    onChainRequestId?: number;
 }

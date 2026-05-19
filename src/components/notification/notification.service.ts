@@ -90,24 +90,24 @@ export class NotificationService {
       if (diffDays === 3) {
         await this.createNotification(
           loan.borrowerId.toString(),
-          '⚠️ Sắp đến hạn trả nợ',
-          `Khoản vay của bạn sẽ đến hạn sau 3 ngày nữa. Vui lòng chuẩn bị số dư để tránh phí phạt.`,
+          '⚠️ Nhắc nhở: Sắp đến hạn trả nợ',
+          `Khoản vay ${loan.principalAmount} USDT của bạn sẽ đến hạn sau 3 ngày nữa. Vui lòng chuẩn bị đủ số dư để thanh toán đúng hạn nhé!`,
           'LOAN',
           loan._id.toString(),
         );
       } else if (diffDays === 1) {
         await this.createNotification(
           loan.borrowerId.toString(),
-          '🚨 Hạn trả nợ ngày mai!',
-          `Khoản vay của bạn sẽ đến hạn vào ngày mai. Hãy thanh toán ngay để tránh bị phạt lãi quá hạn.`,
+          '🚨 Chú ý: Hạn trả nợ là ngày mai!',
+          `Khoản vay ${loan.principalAmount} USDT của bạn sẽ đến hạn vào ngày mai. Hãy nhanh chóng thanh toán để không bị trừ điểm tín dụng và phạt lãi!`,
           'LOAN',
           loan._id.toString(),
         );
       } else if (diffDays < 0) {
         await this.createNotification(
           loan.borrowerId.toString(),
-          '🔴 Khoản vay đã quá hạn!',
-          `Khoản vay của bạn đã quá hạn ${Math.abs(diffDays)} ngày. Vui lòng thanh toán ngay để tránh bị xử lý tài sản thế chấp.`,
+          '🔴 Cảnh báo: Khoản vay đã quá hạn!',
+          `Khoản vay ${loan.principalAmount} USDT của bạn đã quá hạn ${Math.abs(diffDays)} ngày. Nếu không thanh toán sớm, tài sản thế chấp sẽ tự động bị thanh lý!`,
           'LOAN',
           loan._id.toString(),
         );

@@ -76,6 +76,7 @@ export class UserRepository
     if (data.avatarUrl !== undefined) entity.avatarUrl = data.avatarUrl;
     if (data.phone !== undefined) entity.phone = data.phone;
     if (data.gender !== undefined) entity.gender = data.gender;
+    if (data.walletAddress !== undefined) entity.walletAddress = data.walletAddress;
 
     return entity;
   }

@@ -95,6 +95,9 @@ export class LoanRequest extends BaseModel {
   @Prop({ type: String, maxlength: 42 })
   smartContractAddress: string;
 
+  @Prop({ type: Number })
+  onChainRequestId: number;
+
   @Prop({ type: Date })
   expiresAt: Date;
 }

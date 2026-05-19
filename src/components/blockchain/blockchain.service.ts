@@ -13,6 +13,15 @@ import {
 
 const P2PLendingABI = P2PLendingArtifact.abi;
 
+// ─── ABI tối giản cho DebtToken contract ──────────────────────────────────
+const DebtTokenABI = [
+    'function mintDebtToken(address borrower, uint256 loanId, address lender, uint256 principalAmount, uint256 debtAmount, string calldata reason, address loanContract) external returns (uint256 tokenId)',
+    'function getDebtCount(address borrower) external view returns (uint256)',
+    'function hasDebt(address borrower) external view returns (bool)',
+    'function getBorrowerDebtTokens(address borrower) external view returns (uint256[])',
+    'event DebtTokenMinted(uint256 indexed tokenId, address indexed borrower, uint256 indexed loanId, uint256 debtAmount, string reason)',
+];
+
 // ABI tối giản cho Loan contract instance
 const LoanContractABI = [
     'function getLoanDetails() view returns (tuple(uint256 loanId, address borrower, address lender, address loanToken, address collateralToken, uint256 principal, uint256 interestRate, uint256 collateralAmount, uint256 duration, uint256 startTime, uint256 endTime, uint8 status))',
@@ -66,7 +75,9 @@ export interface TransactionVerification {
 export class BlockchainService implements OnModuleInit {
     private readonly logger = new Logger(BlockchainService.name);
     private provider: ethers.JsonRpcProvider;
+    private signer: ethers.Wallet | null = null;
     private p2pLendingContract: ethers.Contract;
+    private debtTokenContract: ethers.Contract | null = null;
     private isListening = false;
 
     constructor(
@@ -77,8 +88,16 @@ export class BlockchainService implements OnModuleInit {
         const rpcUrl = configService.get('BLOCKCHAIN_RPC_URL') || 'http://127.0.0.1:7545';
         this.provider = new ethers.JsonRpcProvider(rpcUrl);
 
-        const p2pAddress = configService.get('P2P_LENDING_ADDRESS');
+        // Khởi tạo signer (backend wallet) để ký transactions (dùng chung ORACLE_PRIVATE_KEY)
+        const privateKey = configService.get<string>('ORACLE_PRIVATE_KEY');
+        if (privateKey) {
+            this.signer = new ethers.Wallet(privateKey, this.provider);
+            this.logger.log(`Backend signer wallet: ${this.signer.address}`);
+        } else {
+            this.logger.warn('ORACLE_PRIVATE_KEY chưa cấu hình — không thể mint DebtToken từ event listener');
+        }
 
+        const p2pAddress = configService.get('P2P_LENDING_ADDRESS');
         if (p2pAddress) {
             this.p2pLendingContract = new ethers.Contract(
                 p2pAddress,
@@ -88,6 +107,19 @@ export class BlockchainService implements OnModuleInit {
             this.logger.log(`P2PLending contract: ${p2pAddress}`);
         } else {
             this.logger.warn('P2P_LENDING_ADDRESS chưa được cấu hình trong .env');
+        }
+
+        // Khởi tạo DebtToken contract với signer để có thể gọi mintDebtToken()
+        const debtTokenAddress = configService.get<string>('DEBT_TOKEN_ADDRESS');
+        if (debtTokenAddress && this.signer) {
+            this.debtTokenContract = new ethers.Contract(
+                debtTokenAddress,
+                DebtTokenABI,
+                this.signer,
+            );
+            this.logger.log(`DebtToken contract: ${debtTokenAddress}`);
+        } else {
+            this.logger.warn('DEBT_TOKEN_ADDRESS chưa cấu hình hoặc thiếu signer — DebtToken disabled');
         }
     }
 
@@ -298,14 +330,99 @@ export class BlockchainService implements OnModuleInit {
 
     private async handleLoanLiquidatedEvent(loanContractAddress: string) {
         try {
-            const loan = await this.loanModel.findOne({ loanContractAddress });
+            const loan = await this.loanModel.findOne({ loanContractAddress })
+                .populate('borrowerId', 'walletAddress')
+                .populate('lenderId', 'walletAddress');
             if (!loan) return;
 
             loan.status = LOAN_STATUS_ENUM.LIQUIDATED;
             await loan.save();
             this.logger.log(`⚠️ Đã cập nhật loan ${loan._id} sang LIQUIDATED`);
+
+            // Mint DebtToken on-chain để ghi nhận nợ xấu vĩnh viễn
+            await this.mintDebtTokenForLoan(loan, 'LIQUIDATED');
         } catch (error) {
             this.logger.error(`handleLoanLiquidatedEvent error: ${error.message}`);
+        }
+    }
+
+    // ============================
+    // DebtToken: Mint NFT nợ xấu on-chain
+    // ============================
+
+    /**
+     * Mint DebtToken (Soulbound NFT) cho borrower khi khoản vay bị DEFAULTED hoặc LIQUIDATED.
+     * Token được gắn vĩnh viễn với địa chỉ ví borrower — không thể chuyển nhượng.
+     * Số lượng DebtToken phản ánh lịch sử nợ xấu và ảnh hưởng đến credit score.
+     */
+    async mintDebtTokenForLoan(loan: any, reason: 'DEFAULTED' | 'LIQUIDATED'): Promise<string | null> {
+        if (!this.debtTokenContract) {
+            this.logger.warn('[DebtToken] Contract chưa khởi tạo — bỏ qua mint');
+            return null;
+        }
+
+        try {
+            const borrowerWallet = loan.borrowerId?.walletAddress;
+            const lenderWallet = loan.lenderId?.walletAddress || ethers.ZeroAddress;
+
+            if (!borrowerWallet) {
+                this.logger.warn(`[DebtToken] Loan ${loan._id} không có borrower wallet — bỏ qua`);
+                return null;
+            }
+
+            // Principal tính bằng USDT (6 decimals) — dùng đúng field từ Loan schema
+            const principal = Number(loan.principalAmount ?? 0);
+            const principalWei = ethers.parseUnits(String(principal.toFixed(6)), 6);
+
+            // Tổng nợ: dùng totalAmount nếu có, fallback tính thủ công
+            const totalDebt = Number(loan.totalAmount ?? 0) || (() => {
+                const rate = Number(loan.interestRate ?? 0);
+                const days = Number(loan.durationDays ?? 30);
+                return principal + (principal * rate * days) / (365 * 100);
+            })();
+            const totalDebtWei = ethers.parseUnits(String(totalDebt.toFixed(6)), 6);
+
+            // loanId on-chain (nếu có), fallback sang 0
+            const onChainLoanId = loan.onChainLoanId ?? 0;
+            const loanContractAddr = loan.loanContractAddress ?? ethers.ZeroAddress;
+
+            this.logger.log(
+                `[DebtToken] Đang mint cho borrower ${borrowerWallet} — Loan ${loan._id} — Reason: ${reason}`,
+            );
+
+            const tx = await this.debtTokenContract.mintDebtToken(
+                borrowerWallet,
+                onChainLoanId,
+                lenderWallet,
+                principalWei,
+                totalDebtWei,
+                reason,
+                loanContractAddr,
+            );
+
+            const receipt = await tx.wait();
+            this.logger.log(
+                `✅ [DebtToken] Mint thành công — TxHash: ${receipt.hash} — Borrower: ${borrowerWallet}`,
+            );
+
+            return receipt.hash;
+        } catch (error) {
+            this.logger.error(`[DebtToken] Mint thất bại cho loan ${loan._id}: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Lấy số DebtToken (số lần vỡ nợ) của một địa chỉ ví.
+     * Dùng để tính credit score hoặc hiển thị trên UI.
+     */
+    async getDebtCount(walletAddress: string): Promise<number> {
+        if (!this.debtTokenContract) return 0;
+        try {
+            const count = await this.debtTokenContract.getDebtCount(walletAddress);
+            return Number(count);
+        } catch {
+            return 0;
         }
     }
 
@@ -417,6 +534,7 @@ export class BlockchainService implements OnModuleInit {
     async checkOverdueLoans(): Promise<number> {
         let overdueCount = 0;
         try {
+            // ACTIVE → OVERDUE: quá dueDate nhưng chưa trả
             const activeLoans = await this.loanModel.find({
                 status: LOAN_STATUS_ENUM.ACTIVE,
                 dueDate: { $lt: new Date() },
@@ -426,7 +544,37 @@ export class BlockchainService implements OnModuleInit {
                 loan.status = LOAN_STATUS_ENUM.OVERDUE;
                 await loan.save();
                 overdueCount++;
-                this.logger.warn(`⚠️ Loan ${loan._id} đã quá hạn`);
+                this.logger.warn(`⚠️ Loan ${loan._id} đã quá hạn (OVERDUE)`);
+            }
+
+            // OVERDUE → DEFAULTED: quá hạn ≥ 7 ngày mà vẫn chưa trả
+            // → Mint DebtToken on-chain
+            const gracePeriod = 7 * 24 * 60 * 60 * 1000; // 7 ngày
+            const defaultCutoff = new Date(Date.now() - gracePeriod);
+
+            const overdueLoans = await this.loanModel
+                .find({
+                    status: LOAN_STATUS_ENUM.OVERDUE,
+                    dueDate: { $lt: defaultCutoff },
+                    debtTokenMinted: { $ne: true }, // Tránh mint 2 lần
+                })
+                .populate('borrowerId', 'walletAddress')
+                .populate('lenderId', 'walletAddress');
+
+            for (const loan of overdueLoans) {
+                loan.status = LOAN_STATUS_ENUM.DEFAULTED;
+                await loan.save();
+                this.logger.warn(`🔴 Loan ${loan._id} chuyển sang DEFAULTED — Đang mint DebtToken...`);
+
+                const txHash = await this.mintDebtTokenForLoan(loan, 'DEFAULTED');
+                if (txHash) {
+                    // Đánh dấu đã mint để không mint lại lần sau
+                    await this.loanModel.findByIdAndUpdate(loan._id, {
+                        debtTokenMinted: true,
+                        debtTokenTxHash: txHash,
+                    });
+                    this.logger.log(`✅ DebtToken minted cho loan ${loan._id} — TxHash: ${txHash}`);
+                }
             }
 
             if (overdueCount > 0) {

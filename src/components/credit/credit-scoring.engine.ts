@@ -130,16 +130,40 @@ export class CreditScoringEngine {
     }
 
     /**
-     * Xác định collateral ratio dựa trên credit score
-     * → Đây là CORE CONCEPT: score cao = thế chấp ít hơn
+     * Tỉ lệ thế chấp tối thiểu theo credit score
+     *
+     * QUY TẪC:
+     * - Không bao giờ xuống dưới 120% (ngưỡng an toàn tối thiểu)
+     * - Score cao → giảm collateral nhưng có floor 120%
+     * - Benefit chính của score cao: lãi suất thấp hơn + hạn mức vay cao hơn
+     *
+     * Lý do không dưới 120%:
+     * - ETH có thể giảm 20-30% trong vài giờ (highly volatile)
+     * - Cần buffer đủ để liquidate kịp trước khi thế chấp = nợ
      */
     getRequiredCollateralRatio(score: number): number {
-        if (score >= 800) return 50;    // EXCELLENT: 50% (under-collateralized)
-        if (score >= 700) return 80;    // GOOD+: 80%
-        if (score >= 600) return 100;   // GOOD: 100%
-        if (score >= 500) return 120;   // FAIR: 120%
-        if (score >= 400) return 135;   // FAIR-: 135%
-        return 150;                     // POOR: 150% (full collateral, giống DeFi)
+        if (score >= 800) return 135;  // EXCELLENT: 135%
+        if (score >= 700) return 145;  // GOOD+:     145%
+        if (score >= 600) return 155;  // GOOD:      155%
+        if (score >= 500) return 165;  // FAIR:      165%
+        if (score >= 400) return 175;  // FAIR-:     175%
+        return 190;                    // POOR:      190%
+    }
+
+    /**
+     * Giảm lãi suất theo credit score (% discount trên lãi suất gốc)
+     * Đây là benefit thực sự của score cao thay vì giảm collateral
+     *
+     * @example
+     * Lãi suất gốc: 12%/năm
+     * Score 800+ → discount 2.5% → chỉ trả 9.5%/năm
+     */
+    getInterestRateDiscount(score: number): number {
+        if (score >= 800) return 2.5;  // Giảm 2.5% lãi suất
+        if (score >= 700) return 1.5;  // Giảm 1.5%
+        if (score >= 600) return 0.5;  // Giảm 0.5%
+        if (score >= 500) return 0;    // Không ưu đãi
+        return 0;                      // Không ưu đãi
     }
 
     /**
@@ -488,12 +512,12 @@ export class CreditScoringEngine {
         collateralRatio: number;
         maxLoanMultiplier: number;
     } {
-        if (score >= 800) return { rating: 'EXCELLENT', collateralRatio: 50, maxLoanMultiplier: 5 };
-        if (score >= 700) return { rating: 'VERY_GOOD', collateralRatio: 80, maxLoanMultiplier: 4 };
-        if (score >= 600) return { rating: 'GOOD', collateralRatio: 100, maxLoanMultiplier: 3 };
-        if (score >= 500) return { rating: 'FAIR', collateralRatio: 120, maxLoanMultiplier: 2 };
-        if (score >= 400) return { rating: 'BELOW_FAIR', collateralRatio: 135, maxLoanMultiplier: 1.5 };
-        return { rating: 'POOR', collateralRatio: 150, maxLoanMultiplier: 1 };
+        if (score >= 800) return { rating: 'EXCELLENT', collateralRatio: 135, maxLoanMultiplier: 5 };
+        if (score >= 700) return { rating: 'VERY_GOOD', collateralRatio: 145, maxLoanMultiplier: 4 };
+        if (score >= 600) return { rating: 'GOOD', collateralRatio: 155, maxLoanMultiplier: 3 };
+        if (score >= 500) return { rating: 'FAIR', collateralRatio: 165, maxLoanMultiplier: 2 };
+        if (score >= 400) return { rating: 'BELOW_FAIR', collateralRatio: 175, maxLoanMultiplier: 1.5 };
+        return { rating: 'POOR', collateralRatio: 190, maxLoanMultiplier: 1 };
     }
 
 
