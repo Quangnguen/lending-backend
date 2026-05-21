@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { BlockchainService } from '../blockchain/blockchain.service';
+import { LoanService } from '../loan/loan.service';
 
 @Injectable()
 export class CronService {
@@ -8,6 +9,7 @@ export class CronService {
 
   constructor(
     private readonly blockchainService: BlockchainService,
+    private readonly loanService: LoanService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -44,6 +46,23 @@ export class CronService {
       }
     } catch (error) {
       this.logger.error(`❌ [Cron] Lỗi kiểm tra overdue: ${error.message}`);
+    }
+  }
+
+  /**
+   * Kiểm tra các yêu cầu vay đã quá hạn (PENDING > 7 ngày) mỗi 30 phút.
+   * Tự động chuyển status từ PENDING -> EXPIRED.
+   */
+  @Cron(CronExpression.EVERY_30_MINUTES)
+  async checkExpiredRequests() {
+    this.logger.log('⏰ [Cron] Kiểm tra yêu cầu vay quá hạn...');
+    try {
+      const expiredCount = await this.loanService.checkExpiredRequests();
+      if (expiredCount > 0) {
+        this.logger.warn(`⚠️ [Cron] Phát hiện và hủy ${expiredCount} yêu cầu vay đã quá hạn`);
+      }
+    } catch (error) {
+      this.logger.error(`❌ [Cron] Lỗi kiểm tra expired requests: ${error.message}`);
     }
   }
 

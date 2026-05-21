@@ -60,15 +60,46 @@ export class CreditScoringEngine {
     async calculateScore(userId: string, consentId?: string): Promise<CreditScore> {
         this.logger.log(`[CreditEngine] Calculating score for user ${userId}`);
 
-        // 1. Lấy Financial Summary
-        const financials = await this.financialAnalyzer.analyzeUserFinancials(userId, consentId);
-
-        // 2. Lấy lịch sử vay trên platform
-        const loanHistory = await this.getLoanHistory(userId);
-
-        // 3. Kiểm tra bank connections
+        // 1. Kiểm tra bank connections
         const bankConnections = await this.openBankingService.getUserConnections(userId);
         const linkedBanks = bankConnections?.length || 0;
+
+        // Nếu không có ngân hàng liên kết và không có consentId, trả về 0 điểm
+        if (linkedBanks === 0 && !consentId) {
+            this.logger.log(`[CreditEngine] User ${userId} has no linked banks - setting score to 0 (UNRATED)`);
+            const finalScore = 0;
+            const rating = 'UNRATED';
+            const loanLimit = 0;
+
+            const creditScoreDoc = await this.creditScoreModel.create({
+                userId: new Types.ObjectId(userId),
+                score: finalScore,
+                breakdown: {
+                    incomeScore: 0,
+                    spendingScore: 0,
+                    balanceScore: 0,
+                    consistencyScore: 0,
+                    historyScore: 0,
+                },
+                rating,
+                loanLimit,
+                calculatedAt: new Date(),
+            });
+
+            // Cập nhật User model
+            const userModel = this.creditScoreModel.db.model('User');
+            await userModel.findByIdAndUpdate(userId, {
+                creditScore: finalScore,
+            });
+
+            return creditScoreDoc.toObject();
+        }
+
+        // 2. Lấy Financial Summary
+        const financials = await this.financialAnalyzer.analyzeUserFinancials(userId, consentId);
+
+        // 3. Lấy lịch sử vay trên platform
+        const loanHistory = await this.getLoanHistory(userId);
 
         // 4. Tính điểm từng thành phần
         const incomeScore = this.scoreIncome(financials);                    // Max 250
@@ -112,6 +143,13 @@ export class CreditScoringEngine {
             rating,
             loanLimit,
             calculatedAt: new Date(),
+        });
+
+        // Cập nhật User model
+        const userModel = this.creditScoreModel.db.model('User');
+        await userModel.findByIdAndUpdate(userId, {
+            creditScore: finalScore,
+            $max: { reputationScore: Math.round(finalScore / 10) }
         });
 
         this.logger.log(

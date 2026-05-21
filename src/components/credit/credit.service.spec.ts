@@ -4,6 +4,8 @@ import { BadRequestException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { CreditService } from './credit.service';
 import { CreditScore } from '@database/schemas/credit-score.model';
+import { User } from '@database/schemas/user.model';
+import { OpenBankingService } from '../openbanking/openbanking.service';
 import { MockOpenBankingService } from '../openbanking/mock/mock-openbanking.service';
 
 describe('CreditService', () => {
@@ -16,9 +18,17 @@ describe('CreditService', () => {
         exec: jest.fn(),
     };
 
+    const mockUserModel = {
+        findByIdAndUpdate: jest.fn(),
+    };
+
     const mockOpenBankingService = {
         getAccounts: jest.fn(),
         getTransactions: jest.fn(),
+    };
+
+    const mockRealOpenBankingService = {
+        getUserConnections: jest.fn(),
     };
 
     beforeEach(async () => {
@@ -26,6 +36,8 @@ describe('CreditService', () => {
             providers: [
                 CreditService,
                 { provide: getModelToken(CreditScore.name), useValue: mockCreditScoreModel },
+                { provide: getModelToken(User.name), useValue: mockUserModel },
+                { provide: OpenBankingService, useValue: mockRealOpenBankingService },
                 { provide: MockOpenBankingService, useValue: mockOpenBankingService },
             ],
         }).compile();
@@ -44,15 +56,24 @@ describe('CreditService', () => {
     describe('calculateCreditScore', () => {
         const userId = new Types.ObjectId().toString();
 
-        it('should throw error when no bank accounts', async () => {
-            mockOpenBankingService.getAccounts.mockResolvedValue([]);
+        it('should return score 0 and rating UNRATED when no bank accounts', async () => {
+            mockRealOpenBankingService.getUserConnections.mockResolvedValue([]);
+            const mockCreatedScore = {
+                _id: new Types.ObjectId(),
+                userId: new Types.ObjectId(userId),
+                score: 0,
+                rating: 'UNRATED',
+                loanLimit: 0,
+            };
+            mockCreditScoreModel.create.mockResolvedValue(mockCreatedScore);
 
-            await expect(service.calculateCreditScore(userId)).rejects.toThrow(
-                BadRequestException,
-            );
+            const result = await service.calculateCreditScore(userId);
+            expect(result.score).toBe(0);
+            expect(result.rating).toBe('UNRATED');
         });
 
         it('should calculate score based on bank data', async () => {
+            mockRealOpenBankingService.getUserConnections.mockResolvedValue([{ bankCode: 'TCB', linkedAt: new Date() }]);
             const mockAccounts = [
                 { id: 'acc-1', balance: 3000 },
                 { id: 'acc-2', balance: 1500 },

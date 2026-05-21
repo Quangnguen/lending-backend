@@ -35,6 +35,30 @@ export class CreditService {
         const bankConnections = await this.openBankingService.getUserConnections(userId);
         const hasRealConnections = bankConnections && bankConnections.length > 0;
 
+        if (!hasRealConnections) {
+            this.logger.log(`User ${userId} has no bank connections. Return score 0 (UNRATED)`);
+            const newScore = await this.creditScoreModel.create({
+                userId: new Types.ObjectId(userId),
+                score: 0,
+                breakdown: {
+                    incomeScore: 0,
+                    spendingScore: 0,
+                    balanceScore: 0,
+                    consistencyScore: 0,
+                    historyScore: 0,
+                },
+                rating: 'UNRATED',
+                loanLimit: 0,
+                calculatedAt: new Date(),
+            });
+
+            await this.userModel.findByIdAndUpdate(userId, {
+                creditScore: 0,
+            });
+
+            return newScore;
+        }
+
         let totalIncome = 0;
         let totalSpending = 0;
         let currentBalance = 0;
@@ -60,33 +84,6 @@ export class CreditService {
             // Trong thực tế sẽ gọi API Open Banking để lấy transaction history
             const mockAccounts = await this.mockOpenBankingService.getAccounts('demo_user');
             for (const acc of mockAccounts) {
-                currentBalance += acc.balance || 0;
-                try {
-                    const transactions = await this.mockOpenBankingService.getTransactions(acc.id);
-                    transactions.forEach(tx => {
-                        transactionCount++;
-                        if (tx.type === 'IN') {
-                            totalIncome += tx.amount;
-                        } else if (tx.type === 'OUT') {
-                            totalSpending += tx.amount;
-                        }
-                    });
-                } catch (error) {
-                    this.logger.error(`Error fetching transactions for account ${acc.id}: ${error.message}`);
-                }
-            }
-        } else {
-            // === TRƯỜNG HỢP 2: Chưa liên kết NH → Dùng mock data (demo) ===
-            this.logger.warn(`User ${userId} has no bank connections - using mock data`);
-
-            const accounts = await this.mockOpenBankingService.getAccounts('demo_user');
-            if (!accounts || accounts.length === 0) {
-                throw new BadRequestException(
-                    'Chưa có dữ liệu ngân hàng. Vui lòng liên kết tài khoản ngân hàng trước.',
-                );
-            }
-
-            for (const acc of accounts) {
                 currentBalance += acc.balance || 0;
                 try {
                     const transactions = await this.mockOpenBankingService.getTransactions(acc.id);

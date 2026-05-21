@@ -3,8 +3,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { KycController } from './kyc.controller';
 import { KycService } from './kyc.service';
 import { LocalKycService } from './local-kyc.service';
+import { KycCloudinaryService } from './kyc-cloudinary.service';
 import { KycRecord, KycRecordSchema } from '@database/schemas/kyc-record.model';
 import { User, UserSchema } from '@database/schemas/user.model';
+import { FileProvider } from '@components/file/file.provider';
 
 @Module({
   imports: [
@@ -14,7 +16,12 @@ import { User, UserSchema } from '@database/schemas/user.model';
     ]),
   ],
   controllers: [KycController],
-  providers: [KycService, LocalKycService],
-  exports: [KycService, LocalKycService],
+  providers: [
+    FileProvider,           // Khởi tạo Cloudinary v2 config
+    KycService,
+    LocalKycService,
+    KycCloudinaryService,  // Service upload ảnh KYC lên Cloudinary
+  ],
+  exports: [KycService, LocalKycService, KycCloudinaryService],
 })
 export class KycModule {}

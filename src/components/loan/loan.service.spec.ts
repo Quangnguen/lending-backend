@@ -4,12 +4,18 @@ import { BadRequestException, NotFoundException, ForbiddenException } from '@nes
 import { Types } from 'mongoose';
 import { LoanService } from './loan.service';
 import { CreditService } from '../credit/credit.service';
+import { CreditScoringEngine } from '../credit/credit-scoring.engine';
 import { BlockchainService } from '../blockchain/blockchain.service';
+import { OpenBankingService } from '../openbanking/openbanking.service';
+import { MockOpenBankingService } from '../openbanking/mock/mock-openbanking.service';
+import { VietQRService } from '../openbanking/vietqr.service';
+import { User } from '@database/schemas/user.model';
+import { NotificationService } from '../notification/notification.service';
 import { Loan } from '@database/schemas/loan.model';
 import { LoanRequest } from '@database/schemas/bank-request.model';
 import { LoanRepayment } from '@database/schemas/loan-repayment.model';
 import { LoanOffer } from '@database/schemas/loan-offer.model';
-import { LOAN_REQUEST_STATUS_ENUM, LOAN_STATUS_ENUM } from '@constant/p2p-lending.enum';
+import { LOAN_REQUEST_STATUS_ENUM, LOAN_STATUS_ENUM, KYC_STATUS_ENUM } from '@constant/p2p-lending.enum';
 
 describe('LoanService', () => {
     let service: LoanService;
@@ -25,25 +31,26 @@ describe('LoanService', () => {
         countDocuments: jest.fn(),
         sort: jest.fn().mockReturnThis(),
         populate: jest.fn().mockReturnThis(),
-        lean: jest.fn(),
+        lean: jest.fn().mockResolvedValue([]),
     };
 
     const mockLoanModel = {
         create: jest.fn(),
         find: jest.fn().mockReturnThis(),
         findById: jest.fn(),
+        findOne: jest.fn(),
         countDocuments: jest.fn(),
         aggregate: jest.fn(),
         sort: jest.fn().mockReturnThis(),
         populate: jest.fn().mockReturnThis(),
-        lean: jest.fn(),
+        lean: jest.fn().mockResolvedValue([]),
     };
 
     const mockRepaymentModel = {
         create: jest.fn(),
         find: jest.fn().mockReturnThis(),
         sort: jest.fn().mockReturnThis(),
-        lean: jest.fn(),
+        lean: jest.fn().mockResolvedValue([]),
     };
 
     const mockOfferModel = {};
@@ -53,10 +60,38 @@ describe('LoanService', () => {
         calculateCreditScore: jest.fn(),
     };
 
+    const mockCreditScoringEngine = {
+        getLatestScore: jest.fn(),
+        calculateScore: jest.fn(),
+        getRequiredCollateralRatio: jest.fn().mockReturnValue(150),
+    };
+
     const mockBlockchainService = {
         verifyTransaction: jest.fn(),
         getLoanOnChainStatus: jest.fn(),
         attachSingleLoanListener: jest.fn(),
+    };
+
+    const mockOpenBankingService = {
+        getUserConnections: jest.fn(),
+    };
+
+    const mockMockOpenBankingService = {
+        getAccounts: jest.fn(),
+        getTransactions: jest.fn(),
+    };
+
+    const mockVietQRService = {
+        generateLoanPaymentQR: jest.fn(),
+    };
+
+    const mockUserModel = {
+        findById: jest.fn(),
+        findByIdAndUpdate: jest.fn(),
+    };
+
+    const mockNotificationService = {
+        createNotification: jest.fn(),
     };
 
     beforeEach(async () => {
@@ -68,11 +103,42 @@ describe('LoanService', () => {
                 { provide: getModelToken(LoanRepayment.name), useValue: mockRepaymentModel },
                 { provide: getModelToken(LoanOffer.name), useValue: mockOfferModel },
                 { provide: CreditService, useValue: mockCreditService },
+                { provide: CreditScoringEngine, useValue: mockCreditScoringEngine },
                 { provide: BlockchainService, useValue: mockBlockchainService },
+                { provide: OpenBankingService, useValue: mockOpenBankingService },
+                { provide: MockOpenBankingService, useValue: mockMockOpenBankingService },
+                { provide: VietQRService, useValue: mockVietQRService },
+                { provide: getModelToken(User.name), useValue: mockUserModel },
+                { provide: NotificationService, useValue: mockNotificationService },
             ],
         }).compile();
 
         service = module.get<LoanService>(LoanService);
+
+        // Mock default user for validateUserFlow
+        mockUserModel.findById.mockResolvedValue({
+            _id: userId,
+            kycStatus: KYC_STATUS_ENUM.VERIFIED,
+            creditScore: 700,
+            reputationScore: 70,
+            isVerified: true,
+            walletAddress: '0x1234567890123456789012345678901234567890',
+        });
+
+        // Mock active bank connection so validateUserFlow bank connection check passes
+        mockOpenBankingService.getUserConnections.mockResolvedValue([
+            {
+                _id: new Types.ObjectId().toString(),
+                userId,
+                bankCode: 'VCB',
+                accountNumber: '1234567890',
+                accountName: 'Nguyen Van A',
+                balance: 50000000,
+                currency: 'VND',
+                accountType: 'CURRENT',
+                linkedAt: new Date(),
+            }
+        ]);
     });
 
     afterEach(() => {
@@ -95,7 +161,7 @@ describe('LoanService', () => {
         };
 
         it('should create a loan request successfully', async () => {
-            mockCreditService.getLatestScore.mockResolvedValue({
+            mockCreditScoringEngine.getLatestScore.mockResolvedValue({
                 score: 700,
                 rating: 'GOOD',
                 loanLimit: 5000,
@@ -117,7 +183,7 @@ describe('LoanService', () => {
         });
 
         it('should reject if loan amount exceeds credit limit', async () => {
-            mockCreditService.getLatestScore.mockResolvedValue({
+            mockCreditScoringEngine.getLatestScore.mockResolvedValue({
                 score: 400,
                 rating: 'POOR',
                 loanLimit: 500,
@@ -129,11 +195,12 @@ describe('LoanService', () => {
         });
 
         it('should reject if too many pending requests', async () => {
-            mockCreditService.getLatestScore.mockResolvedValue({
+            mockCreditScoringEngine.getLatestScore.mockResolvedValue({
                 score: 700,
                 rating: 'GOOD',
                 loanLimit: 5000,
             });
+            mockLoanRequestModel.lean.mockResolvedValueOnce([{}, {}, {}]);
             mockLoanRequestModel.countDocuments.mockResolvedValue(3);
 
             await expect(
@@ -220,7 +287,7 @@ describe('LoanService', () => {
             mockLoanModel.findById.mockResolvedValue(null);
 
             await expect(
-                service.repayLoan(userId, 'nonexistent', repayDto),
+                service.repayLoan(userId, new Types.ObjectId().toString(), repayDto),
             ).rejects.toThrow(NotFoundException);
         });
 

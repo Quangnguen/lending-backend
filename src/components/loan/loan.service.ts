@@ -53,11 +53,11 @@ export class LoanService {
         await this.validateUserFlow(userId);
 
         // 1. Kiểm tra credit score
-        let creditScore = await this.creditService.getLatestScore(userId);
+        let creditScore = await this.creditScoringEngine.getLatestScore(userId);
         if (!creditScore) {
             // Tự động tính credit score nếu chưa có
             try {
-                creditScore = await this.creditService.calculateCreditScore(userId);
+                creditScore = await this.creditScoringEngine.calculateScore(userId);
             } catch (error) {
                 this.logger.warn(`Không thể tính credit score cho user ${userId}: ${error.message}`);
             }
@@ -343,12 +343,10 @@ export class LoanService {
             throw new BadRequestException(`Yêu cầu vay không ở trạng thái chờ (hiện tại: ${request.status})`);
         }
 
-        // Không cho phép tự cho mình vay (kiểm tra cả MongoDB ID lẫn ví blockchain)
-        // Với Ganache demo: cho phép cùng 1 user nhưng dùng ví khác nhau
-        // Comment out check by MongoDB ID để hỗ trợ kịch bản demo single-user
-        // if (request.borrowerId.toString() === lenderId.toString()) {
-        //     throw new ForbiddenException('Không thể cấp vốn cho chính mình');
-        // }
+        // Không cho phép tự cho mình vay (kiểm tra cả MongoDB ID)
+        if (request.borrowerId.toString() === lenderId.toString()) {
+            throw new ForbiddenException('Không thể cấp vốn cho chính mình');
+        }
 
         // 2. Verify transaction on blockchain (nếu có txHash)
         if (dto.txHash) {
@@ -950,5 +948,34 @@ export class LoanService {
         }
 
         return user;
+    }
+
+    /**
+     * Tự động kiểm tra và đánh dấu các yêu cầu vay đã quá hạn.
+     * Cập nhật trạng thái PENDING -> EXPIRED
+     */
+    async checkExpiredRequests(): Promise<number> {
+        let expiredCount = 0;
+        try {
+            const now = new Date();
+            const expiredRequests = await this.loanRequestModel.find({
+                status: LOAN_REQUEST_STATUS_ENUM.PENDING,
+                expiresAt: { $lt: now }
+            });
+
+            for (const req of expiredRequests) {
+                req.status = LOAN_REQUEST_STATUS_ENUM.EXPIRED;
+                await req.save();
+                expiredCount++;
+                this.logger.log(`🔴 LoanRequest ${req._id} đã hết hạn (EXPIRED).`);
+            }
+
+            if (expiredCount > 0) {
+                this.logger.log(`Đã tự động cancel ${expiredCount} LoanRequests do hết hạn.`);
+            }
+        } catch (error) {
+            this.logger.error(`checkExpiredRequests error: ${error.message}`);
+        }
+        return expiredCount;
     }
 }

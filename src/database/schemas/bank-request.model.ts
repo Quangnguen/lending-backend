@@ -108,11 +108,4 @@ export type LoanRequestDocument = LoanRequest & mongoose.Document;
 LoanRequestSchema.set('toJSON', { getters: true });
 LoanRequestSchema.set('toObject', { getters: true });
 
-// TTL index for auto-expire
-LoanRequestSchema.index(
-  { expiresAt: 1 },
-  {
-    expireAfterSeconds: 0,
-    partialFilterExpression: { status: LOAN_REQUEST_STATUS_ENUM.PENDING },
-  },
-);
+

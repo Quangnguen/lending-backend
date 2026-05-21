@@ -23,6 +23,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // Chống spam tạo tài khoản
   @Post('/register')
   @ApiOperation({
     tags: ['Auth'],
@@ -44,6 +45,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // Chống brute-force mật khẩu
   @Post('/login')
   @ApiOperation({
     tags: ['Auth'],
@@ -88,6 +90,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // Chống brute-force OTP
   @Post('/verify-login-otp')
   @ApiOperation({
     tags: ['Auth'],
@@ -188,6 +191,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // Chống spam email
   @Post('/forgot-password')
   @ApiOperation({
     tags: ['Auth'],
@@ -230,6 +234,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // Chống brute-force OTP email
   @Post('/verify-email')
   @ApiOperation({
     tags: ['Auth'],
@@ -251,6 +256,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // Chỉ cho phép gửi lại 3 lần/phút
   @Post('/resend-otp')
   @ApiOperation({
     tags: ['Auth'],

@@ -3,8 +3,9 @@ import {
   Logger,
   BadRequestException,
   OnModuleInit,
+  OnModuleDestroy,
 } from '@nestjs/common';
-import { createWorker } from 'tesseract.js';
+import { createWorker, Worker } from 'tesseract.js';
 
 // ─── Lazy-load canvas (has pre-built binaries for most platforms) ───────────
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -57,12 +58,39 @@ export interface KYCVerificationResult {
 // ─── Service ───────────────────────────────────────────────────────────────
 
 @Injectable()
-export class LocalKycService implements OnModuleInit {
+export class LocalKycService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LocalKycService.name);
   private canvasReady = false;
 
+  // ── Persistent Tesseract worker ────────────────────────────────────────
+  private ocrWorker: Worker | null = null;
+  private ocrWorkerReady = false;
+  // Mutex đơn giản: ngăn 2 request OCR chạy đồng thời trên cùng 1 worker
+  private ocrBusy = false;
+
   // ── Lifecycle ───────────────────────────────────────────────────────────
   async onModuleInit() {
+    // 1. Khởi tạo persistent Tesseract worker (tốn ~2-3s, nhưng chỉ 1 lần)
+    try {
+      this.logger.log('[OCR] Initialising persistent Tesseract worker...');
+      this.ocrWorker = await createWorker(['vie', 'eng'], 1, {
+        // OEM 1 = LSTM only (nhanh hơn OEM 3 combined, chính xác với CCCD)
+        logger: () => {}, // tắt verbose log của Tesseract
+      });
+      // Cấu hình PSM và params tối ưu cho CCCD Việt Nam
+      await this.ocrWorker.setParameters({
+        tessedit_pageseg_mode: '6' as any,  // PSM 6: Assume uniform block of text
+        preserve_interword_spaces: '1',      // Giữ khoảng trắng giữa từ
+        // Loại bỏ các ký tự đặc biệt thường bị OCR nhầm trên CCCD
+        tessedit_char_blacklist: '|\\~`^{}[]<>',
+      });
+      this.ocrWorkerReady = true;
+      this.logger.log('✅ Tesseract worker ready (Vietnamese + English)');
+    } catch (err: any) {
+      this.logger.error(`[OCR] Failed to init worker: ${err.message}`);
+    }
+
+    // 2. Canvas cho face matching
     if (canvasLib) {
       this.canvasReady = true;
       this.logger.log('✅ Canvas loaded — face similarity comparison ready');
@@ -73,19 +101,65 @@ export class LocalKycService implements OnModuleInit {
     }
   }
 
+  async onModuleDestroy() {
+    if (this.ocrWorker) {
+      await this.ocrWorker.terminate();
+      this.ocrWorker = null;
+      this.logger.log('[OCR] Worker terminated');
+    }
+  }
+
   // ── Bước 1: OCR đọc thông tin CCCD bằng Tesseract.js ───────────────────
   async recognizeID(
     imageBuffer: Buffer,
     filename: string,
   ): Promise<IDRecognitionResult> {
-    this.logger.log(`[OCR] Processing image: ${filename}`);
+    const t0 = Date.now();
+    this.logger.log(`[OCR] Processing: ${filename} (${(imageBuffer.length / 1024).toFixed(1)} KB)`);
+
+    // ── Chờ worker sẵn sàng (tối đa 10s) ──────────────────────────────────
+    if (!this.ocrWorkerReady || !this.ocrWorker) {
+      this.logger.warn('[OCR] Worker not ready, falling back to new worker...');
+      return this.recognizeIDFallback(imageBuffer, filename);
+    }
+
+    // ── Mutex: nếu worker đang bận, chờ tối đa 15s ──────────────────────
+    let waited = 0;
+    while (this.ocrBusy && waited < 15000) {
+      await new Promise((r) => setTimeout(r, 200));
+      waited += 200;
+    }
+    if (this.ocrBusy) {
+      this.logger.warn('[OCR] Worker still busy after 15s, using fallback');
+      return this.recognizeIDFallback(imageBuffer, filename);
+    }
+
+    this.ocrBusy = true;
+    try {
+      const { data: { text } } = await this.ocrWorker.recognize(imageBuffer);
+      const elapsed = Date.now() - t0;
+      this.logger.log(`[OCR] Done in ${elapsed}ms — ${text.length} chars extracted`);
+      this.logger.debug(`[OCR] Raw text:\n${text.substring(0, 500)}`);
+      return this.parseCCCDText(text);
+    } finally {
+      this.ocrBusy = false;
+    }
+  }
+
+  // ── Fallback: tạo worker mới khi persistent worker chưa sẵn sàng ────────
+  private async recognizeIDFallback(
+    imageBuffer: Buffer,
+    filename: string,
+  ): Promise<IDRecognitionResult> {
     const worker = await createWorker(['vie', 'eng']);
     try {
-      const {
-        data: { text },
-      } = await worker.recognize(imageBuffer);
-      this.logger.log(`[OCR] Extracted ${text.length} characters from image`);
-      this.logger.debug(`[OCR] Raw text:\n${text.substring(0, 400)}`);
+      await worker.setParameters({
+        tessedit_pageseg_mode: '6' as any,
+        preserve_interword_spaces: '1',
+        tessedit_char_blacklist: '|\\~`^{}[]<>',
+      });
+      const { data: { text } } = await worker.recognize(imageBuffer);
+      this.logger.debug(`[OCR-Fallback] ${filename}: ${text.length} chars`);
       return this.parseCCCDText(text);
     } finally {
       await worker.terminate();
@@ -171,81 +245,287 @@ export class LocalKycService implements OnModuleInit {
     return { isLive: true, isDeepfake: false };
   }
 
+  // ── Helper: Chuẩn hoà ngày tháng ───────────────────────────────────────────
+  private normalizeDate(raw: string): string {
+    if (!raw) return '';
+    // OCR hay nhầm: O→0, l/I→1, S→5
+    const cleaned = raw
+      .replace(/[Oo]/g, '0')
+      .replace(/[lI]/g, '1')
+      .replace(/[Ss]/g, '5');
+    const m = cleaned.match(/(\d{1,2})[\/\-\.\s](\d{2})[\/\-\.\s](\d{4})/);
+    if (!m) return raw.trim();
+    const dd = m[1].padStart(2, '0');
+    const mm = m[2].padStart(2, '0');
+    const yyyy = m[3];
+    if (parseInt(mm) > 12 || parseInt(dd) > 31) return raw.trim();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  // ── Helper: Trích số CCCD/CMND (dung sai OCR nhầm ký tự) ──────────────────
+  private extractIDNumber(text: string): string {
+    // Chuẩn hoà: OCR hay nhầm O→0, l/I→1, S→5, B→8, G→6
+    const n = text
+      .replace(/[Oo]/g, '0')
+      .replace(/[lI]/g, '1')
+      .replace(/[Ss]/g, '5')
+      .replace(/[Bb]/g, '8')
+      .replace(/[Gg]/g, '6');
+    // Ư u tiên: sau label "Số"
+    const labeled12 = n.match(/(?:^|\n|Số[:\s]|No[.:\s])\s*(\d{12})\b/m);
+    if (labeled12) return labeled12[1];
+    const any12 = n.match(/\b(\d{12})\b/);
+    if (any12) return any12[1];
+    const labeled9 = n.match(/(?:^|\n|Số[:\s]|No[.:\s])\s*(\d{9})\b/m);
+    if (labeled9) return labeled9[1];
+    const any9 = n.match(/\b(\d{9})\b/);
+    if (any9) return any9[1];
+    return '';
+  }
+
+  // ── Helper: Trích tên từ các dòng OCR ───────────────────────────────────
+  private extractName(lines: string[]): string {
+    const nameLabelRe = /Họ[,\s]*(chữ đệm|và tên)?[\s,]*(tên)?[\s]*(khai sinh)?|Full name|Ho va ten/i;
+    // Unicode phủ đầy đủ tiếng Việt
+    const vnNameRe = /^[A-ZÀ-ɏḀ-ỿ\s]{2,60}$/i;
+    const stopRe = /Ngày sinh|Date of|Giới tính|Quê quán|Quốc tịch|Nơi|Có giá trị|Place|Sex|Gender/i;
+    const headerRe = /CĂN CƯỜC|CHỨNG MINH|CỘNG HOÀ|VIỆT NAM|SOCIALIST|REPUBLIC|NHÂN DÂN|CITIZEN|CÔNG AN|MINISTRY/i;
+
+    const labelIdx = lines.findIndex((l) => nameLabelRe.test(l));
+    if (labelIdx >= 0) {
+      for (let i = labelIdx + 1; i <= labelIdx + 3 && i < lines.length; i++) {
+        const c = lines[i].trim();
+        if (vnNameRe.test(c) && c.length >= 3 && !stopRe.test(c) && !headerRe.test(c) && c.split(' ').length >= 1) {
+          return c.replace(/[^A-Z\u00c0-\u024f\u1e00-\u1effa-z\s]/g, '').trim().toUpperCase();
+        }
+      }
+    }
+    // Fallback: dòng toàn HOA ≥ 5 ký tự, có ≥ 2 từ, không phải header
+    const uppercaseLine = lines.find(
+      (l) =>
+        /^[A-Z\u00c0-\u024f\u1e00-\u1eff\s]{5,60}$/.test(l) &&
+        !headerRe.test(l) &&
+        l.split(' ').length >= 2 &&
+        l.split(' ').length <= 8,
+    );
+    return uppercaseLine
+      ? uppercaseLine.replace(/[^A-Z\u00c0-\u024f\u1e00-\u1effa-z\s]/g, '').trim().toUpperCase()
+      : '';
+  }
+
   // ── Helper: parse text OCR → IDRecognitionResult ────────────────────────
   private parseCCCDText(rawText: string): IDRecognitionResult {
-    const text = rawText;
+    // Tiền xử lý
+    const text = rawText
+      .replace(/\r/g, '')
+      .replace(/\t/g, ' ')
+      .replace(/ {2,}/g, ' ');
+
     const lines = text
       .split('\n')
       .map((l) => l.trim())
-      .filter(Boolean);
+      .filter((l) => l.length > 0);
 
-    // ── Số CCCD (9 hoặc 12 chữ số) ────────────────────────────────────────
-    const idMatch = text.match(/\b(\d{9}|\d{12})\b/);
+    // ── Helper: lấy N dòng tiếp theo sau keyword ──────────────────────────
+    const nextLines = (keyword: RegExp, count = 1): string[] => {
+      const idx = lines.findIndex((l) => keyword.test(l));
+      if (idx < 0) return [];
+      return lines.slice(idx + 1, idx + 1 + count).filter(Boolean);
+    };
 
-    // ── Tất cả ngày tháng dạng DD/MM/YYYY ─────────────────────────────────
-    const allDates = [
-      ...text.matchAll(/(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})/g),
-    ];
-    const dob = allDates[0]?.[1] || '';
-    // Ngày hết hạn thường là ngày cuối cùng xuất hiện
-    const doe = allDates.length > 1 ? allDates[allDates.length - 1][1] : '';
+    // ── Helper: inline value sau keyword trên cùng dòng ─────────────────
+    const inlineValue = (keyword: RegExp): string => {
+      for (const line of lines) {
+        const m = line.match(keyword);
+        if (m) return (m[1] || '').trim();
+      }
+      return '';
+    };
 
-    // ── Giới tính ──────────────────────────────────────────────────────────
-    const sexMatch = text.match(
-      /(?:Giới tính|Sex)\s*[:\|]?\s*(Nam|Nữ|Male|Female)/i,
+    // ════════════════════════════════════════════════════
+    // 1. Số CCCD — 12 chữ số liên tiếp (CCCD) hoặc 9 chữ số (CMND cũ)
+    //    Ưu tiên 12 chữ số vì CMND cũ chỉ 9 chữ số
+    //    Tránh nhầm với các số trong địa chỉ bằng cách kiểm tra vị trí đứng đầu dòng
+    // ════════════════════════════════════════════════════
+    const cccdPattern12 = text.match(/\b(\d{12})\b/);
+    const cccdPattern9 = text.match(/\b(\d{9})\b/);
+    const idNumber = cccdPattern12?.[1] || cccdPattern9?.[1] || '';
+
+    // ════════════════════════════════════════════════════
+    // 2. Tất cả ngày tháng DD/MM/YYYY trong văn bản
+    //    Dob: ngày đầu tiên sau "Ngày sinh" hoặc ngày đầu xuất hiện
+    //    Doe: ngày sau "Có giá trị đến" / "Ngày hết hạn" hoặc ngày cuối cùng
+    //    issue_date: ngày sau "Ngày cấp"
+    // ════════════════════════════════════════════════════
+    const allDateMatches = [...text.matchAll(/(\d{2}[\\/\-\.]\d{2}[\\/\-\.]\d{4})/g)];
+    const allDates = allDateMatches.map((m) => this.normalizeDate(m[1]));
+
+    // Tìm dob: Inline sau "Ngày sinh" / "Date of birth"
+    const dobInline = inlineValue(
+      /(?:Ng[aà]y sinh|Date of birth)\s*[:\|]?\s*(\d{2}[\\/\-\.]\d{2}[\\/\-\.]\d{4})/i,
     );
+    const dob = dobInline
+      ? this.normalizeDate(dobInline)
+      : (allDates[0] || '');
 
-    // ── Họ tên: dòng ngay sau "Họ và tên" / "Full name" ───────────────────
+    // Tìm doe: Inline sau "Có giá trị đến" / "Ngày hết hạn"
+    const doeInline = inlineValue(
+      /(?:Có giá trị đến|Date of expiry|Ng[aà]y h[eế]t h[aạ]n|Valid until)\s*[:\|]?\s*(\d{2}[\\/\-\.]\d{2}[\\/\-\.]\d{4})/i,
+    );
+    const doe = doeInline
+      ? this.normalizeDate(doeInline)
+      : (allDates.length > 1 ? allDates[allDates.length - 1] : '');
+
+    // Tìm issue_date: Inline sau "Ngày cấp"
+    const issueDateInline = inlineValue(
+      /(?:Ng[aà]y c[aấ]p|Date of issue)\s*[:\|]?\s*(\d{2}[\\/\-\.]\d{2}[\\/\-\.]\d{4})/i,
+    );
+    const issueDate = issueDateInline ? this.normalizeDate(issueDateInline) : '';
+
+    // ════════════════════════════════════════════════════
+    // 3. Họ tên — CCCD mới in HOA trên 1 dòng riêng ngay sau label
+    //    CMND cũ có thể có chữ thường
+    // ════════════════════════════════════════════════════
     const nameIdx = lines.findIndex((l) =>
-      /Họ và tên|Họ tên|Full name/i.test(l),
+      /Họ(?: và| tên)?(?:\s+tên)?|Full name/i.test(l),
     );
-    const rawName =
-      nameIdx >= 0
-        ? lines
-            .slice(nameIdx + 1, nameIdx + 3)
-            .find((l) => /^[A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠƯẠ-Ỹ\s]{3,}$/i.test(l)) || ''
-        : '';
+    let rawName = '';
+    if (nameIdx >= 0) {
+      // Thử dòng liền kề (thường là tên viết HOA)
+      for (let i = nameIdx + 1; i <= nameIdx + 3 && i < lines.length; i++) {
+        const candidate = lines[i].trim();
+        // Tên phải toàn chữ cái + khoảng trắng, độ dài hợp lý
+        if (
+          /^[A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠƯẠ-Ỹ\s]{2,50}$/i.test(candidate) &&
+          candidate.length >= 2 &&
+          !(/Ngày sinh|Date of|Giới tính|Quê quán|Quốc tịch/i.test(candidate))
+        ) {
+          rawName = candidate;
+          break;
+        }
+      }
+    }
+    // Fallback: tìm dòng chỉ toàn chữ HOA dài ≥ 3 ký tự
+    if (!rawName) {
+      rawName = lines.find(
+        (l) =>
+          /^[A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠƯẠ-Ỹ\s]{3,}$/.test(l) &&
+          l.length <= 60 &&
+          !(/CĂN CƯỚC|CHỨNG MINH|CỘNG HOÀ|VIỆT NAM|SOCIALIST|REPUBLIC/i.test(l)),
+      ) || '';
+    }
+    const name = rawName
+      .replace(/[^a-zA-ZÀ-ỹ\s]/g, '')
+      .trim()
+      .toUpperCase();
 
-    // ── Quê quán ───────────────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════
+    // 4. Giới tính — Inline hoặc dòng kế tiếp
+    // ════════════════════════════════════════════════════
+    const sexInline = inlineValue(
+      /(?:Giới tính|Sex)\s*[:\|]?\s*(Nam|Nữ|Male|Female|M|F)\b/i,
+    );
+    let sex = sexInline;
+    if (!sex) {
+      const sexNext = nextLines(/Giới tính|Sex/i, 1)[0] || '';
+      if (/^(Nam|Nữ|Male|Female|M|F)$/i.test(sexNext)) sex = sexNext;
+    }
+    // Chuẩn hoá M/F → Nam/Nữ
+    if (/^(M|Male)$/i.test(sex)) sex = 'Nam';
+    if (/^(F|Female)$/i.test(sex)) sex = 'Nữ';
+
+    // ════════════════════════════════════════════════════
+    // 5. Quê quán — thường nhiều dòng, lấy đến khi gặp label tiếp theo
+    // ════════════════════════════════════════════════════
     const homeIdx = lines.findIndex((l) =>
       /Quê quán|Place of origin/i.test(l),
     );
-    const home = homeIdx >= 0 ? (lines[homeIdx + 1] || '') : '';
+    let home = '';
+    if (homeIdx >= 0) {
+      const homeParts: string[] = [];
+      for (let i = homeIdx + 1; i < Math.min(homeIdx + 4, lines.length); i++) {
+        if (/Nơi thường trú|Place of residence|Ngày|Date|Giới tính|Đặc điểm/i.test(lines[i])) break;
+        homeParts.push(lines[i]);
+      }
+      home = homeParts.join(' ').trim();
+    }
+    // Inline fallback
+    if (!home) {
+      home = inlineValue(/(?:Quê quán|Place of origin)\s*[:\|]?\s*(.+)/i);
+    }
 
-    // ── Nơi thường trú ─────────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════
+    // 6. Nơi thường trú — tương tự quê quán
+    // ════════════════════════════════════════════════════
     const addressIdx = lines.findIndex((l) =>
       /Nơi thường trú|Place of residence/i.test(l),
     );
-    const address = addressIdx >= 0 ? (lines[addressIdx + 1] || '') : '';
+    let address = '';
+    if (addressIdx >= 0) {
+      const addrParts: string[] = [];
+      for (let i = addressIdx + 1; i < Math.min(addressIdx + 5, lines.length); i++) {
+        if (/Ngày cấp|Date of issue|Có giá trị|Đặc điểm|Nơi cấp/i.test(lines[i])) break;
+        addrParts.push(lines[i]);
+      }
+      address = addrParts.join(' ').trim();
+    }
+    if (!address) {
+      address = inlineValue(/(?:Nơi thường trú|Place of residence)\s*[:\|]?\s*(.+)/i);
+    }
 
-    // ── Ngày cấp / Nơi cấp ────────────────────────────────────────────────
-    const issueDateMatch = text.match(
-      /(?:Ngày cấp|Date of issue)\s*[:\|]?\s*(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})/i,
-    );
+    // ════════════════════════════════════════════════════
+    // 7. Nơi cấp — dòng sau "Nơi cấp" hoặc "Place of issue"
+    // ════════════════════════════════════════════════════
     const issueLocIdx = lines.findIndex((l) =>
       /Nơi cấp|Place of issue/i.test(l),
     );
-    const issueLoc = issueLocIdx >= 0 ? (lines[issueLocIdx + 1] || '') : '';
+    let issueLoc = '';
+    if (issueLocIdx >= 0) {
+      const locParts: string[] = [];
+      for (let i = issueLocIdx + 1; i < Math.min(issueLocIdx + 3, lines.length); i++) {
+        if (/Ngày cấp|Ngày sinh|Đặc điểm|Có giá trị/i.test(lines[i])) break;
+        locParts.push(lines[i]);
+      }
+      issueLoc = locParts.join(' ').trim();
+    }
+    if (!issueLoc) {
+      issueLoc = inlineValue(/(?:Nơi cấp|Place of issue)\s*[:\|]?\s*(.+)/i);
+    }
 
-    // ── Loại giấy tờ ──────────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════
+    // 8. Loại giấy tờ
+    // ════════════════════════════════════════════════════
     const docType = /CĂN CƯỚC|CCCD/i.test(text)
       ? 'CCCD'
       : /CHỨNG MINH|CMND/i.test(text)
         ? 'CMND'
         : 'CCCD';
 
+    // ════════════════════════════════════════════════════
+    // 9. Đặc điểm nhận dạng (features) — mặt sau CCCD
+    // ════════════════════════════════════════════════════
+    const featuresIdx = lines.findIndex((l) =>
+      /Đặc điểm nhận dạng|Personal identification|Dấu hiệu/i.test(l),
+    );
+    const features = featuresIdx >= 0 ? (lines[featuresIdx + 1] || '').trim() : '';
+
+    this.logger.debug(
+      `[OCR] Parsed → id:${idNumber} name:${name} dob:${dob} sex:${sex} doe:${doe} issue:${issueDate}@${issueLoc}`,
+    );
+
     return {
-      id: idMatch?.[1] || '',
-      name: rawName.replace(/[^a-zA-ZÀ-ỹ\s]/g, '').trim().toUpperCase(),
+      id: idNumber,
+      name,
       dob,
-      sex: sexMatch?.[1] || '',
+      sex,
       nationality: 'Việt Nam',
-      home: home.trim(),
-      address: address.trim(),
+      home: home,
+      address: address,
       doe,
       type: docType,
-      issue_date: issueDateMatch?.[1] || '',
-      issue_loc: issueLoc.trim(),
+      features,
+      issue_date: issueDate,
+      issue_loc: issueLoc,
       confidence: 0.8,
     };
   }

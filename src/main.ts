@@ -1,5 +1,6 @@
 import 'colors';
 import { join } from 'path';
+import { mkdirSync } from 'fs';
 import moment from 'moment';
 import morgan from 'morgan';
 import { NestFactory } from '@nestjs/core';
@@ -65,6 +66,11 @@ async function bootstrap() {
   });
   app.set('trust proxy', true);
   app.setGlobalPrefix(apiPrefix);
+
+  // Serve ảnh KYC đã upload
+  const uploadsDir = join(process.cwd(), 'uploads');
+  mkdirSync(uploadsDir, { recursive: true });
+  app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
   app.useGlobalPipes(new SortQueryPipe());
   app.useGlobalPipes(new FilterQueryPipe());
   app.useWebSocketAdapter(new IoAdapter(app));
