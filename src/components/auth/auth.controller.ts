@@ -16,6 +16,7 @@ import { VerifyEmailRequestDto } from './dto/request/verify-email.request.dto';
 import { ResendOtpRequestDto } from './dto/request/resend-otp.request.dto';
 import { VerifyLoginOtpRequestDto } from './dto/request/verify-login-otp.request.dto';
 import { LogoutRequestDto } from './dto/request/logout.request.dto';
+import { ResetPasswordRequestDto } from './dto/request/reset-password.request.dto';
 
 @ApiBearerAuth()
 @Controller('auth')
@@ -83,10 +84,13 @@ export class AuthController {
       return responseError;
     }
 
-    // Gán user từ request (đã được auth guard xử lý)
     request.user = req.user;
 
-    return await this.authService.logout(request);
+    // FIX HIGH-6: Truyền raw token để service blacklist vào Redis
+    const authHeader = req.headers?.authorization as string | undefined;
+    const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+
+    return await this.authService.logout(request, rawToken);
   }
 
   @Public()
@@ -210,6 +214,25 @@ export class AuthController {
     }
 
     return await this.authService.forgotPassword(request);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Post('/reset-password')
+  @ApiOperation({
+    tags: ['Auth'],
+    summary: 'Đặt lại mật khẩu bằng OTP',
+    description: 'Bước 2 của luồng quên mật khẩu: nhập OTP nhận qua email + mật khẩu mới',
+  })
+  @ApiResponse({ status: 200, description: 'Đặt lại mật khẩu thành công' })
+  async resetPassword(@Body() payload: ResetPasswordRequestDto) {
+    const { request, responseError } = payload;
+
+    if (!isEmpty(responseError)) {
+      return responseError;
+    }
+
+    return await this.authService.resetPassword(request);
   }
 
   @Public()

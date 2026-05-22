@@ -33,7 +33,15 @@ export class OpenBankingService {
     private configService: ConfigService,
     private vietqrService: VietQRService,
   ) {
-    this.encryptionKey = this.configService.get('auth.secret') || 'default-secret';
+    // FIX HIGH-2: Dùng key riêng cho bank data, không bao giờ reuse JWT secret.
+    // Nếu JWT secret bị rotate, dữ liệu ngân hàng đã mã hóa vẫn đọc được.
+    const bankKey = process.env.BANK_ENCRYPTION_KEY;
+    if (!bankKey) {
+      throw new Error(
+        'BANK_ENCRYPTION_KEY is not set. Set a dedicated 32-char env var — never reuse AUTH_ACCESS_SECRET.',
+      );
+    }
+    this.encryptionKey = bankKey;
   }
 
   /**

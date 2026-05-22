@@ -23,5 +23,7 @@
   "EMAIL_VERIFIED_SUCCESS": "Xác thực email thành công",
   "OTP_RESENT_SUCCESS": "Mã OTP đã được gửi lại thành công",
   "LOGIN_OTP_SENT": "Mã OTP đã được gửi đến email của bạn",
-  "LOGOUT_SUCCESS": "Đăng xuất thành công"
+  "LOGOUT_SUCCESS": "Đăng xuất thành công",
+  "FORGOT_PASSWORD_OTP_SENT": "Mã OTP đặt lại mật khẩu đã được gửi đến email của bạn. Mã có hiệu lực trong 15 phút.",
+  "RESET_PASSWORD_SUCCESS": "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại."
 }

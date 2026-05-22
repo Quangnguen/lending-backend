@@ -33,6 +33,8 @@ const LoanContractABI = [
     'event LoanRepaid(uint256 indexed loanId, uint256 totalAmount)',
     'event LoanLiquidated(uint256 indexed loanId, address indexed liquidator)',
     'event LoanCancelled(uint256 indexed loanId)',
+    'event CollateralReleased(uint256 indexed loanId, address borrower, address token, uint256 amount)',
+    'event CollateralReleaseFailed(uint256 indexed loanId, address borrower, uint256 amount, string reason)',
 ];
 
 // Mapping on-chain status (enum index) -> off-chain status
@@ -280,6 +282,26 @@ export class BlockchainService implements OnModuleInit {
 
             loanContract.on('LoanCancelled', async (loanId) => {
                 this.logger.log(`🚫 [Event] LoanCancelled — ID: ${loanId}`);
+            });
+
+            // Collateral bị stuck sau repay (try-catch trong Loan.sol bắt lỗi)
+            // Borrower vẫn có thể tự gọi CollateralManager.withdrawCollateral(loanId) bằng ví của họ
+            loanContract.on('CollateralReleaseFailed', async (loanId, borrower, amount, reason) => {
+                this.logger.error(
+                    `🚨 [CRITICAL] CollateralReleaseFailed — LoanContract: ${loanContractAddress} | ` +
+                    `OnChainLoanId: ${loanId} | Borrower: ${borrower} | ` +
+                    `Amount: ${ethers.formatEther(amount)} ETH | Reason: ${reason} | ` +
+                    `ACTION REQUIRED: Borrower phải tự gọi CollateralManager.withdrawCollateral(${loanId})`
+                );
+                // Flag loan trong DB để frontend có thể hiển thị cảnh báo
+                try {
+                    await this.loanModel.updateOne(
+                        { loanContractAddress },
+                        { $set: { collateralStuck: true } }
+                    );
+                } catch (e) {
+                    this.logger.error(`Không thể flag collateralStuck cho ${loanContractAddress}: ${e.message}`);
+                }
             });
         } catch (error) {
             this.logger.error(`Lỗi attach listener cho ${loanContractAddress}: ${error.message}`);

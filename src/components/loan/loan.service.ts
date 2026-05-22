@@ -516,6 +516,15 @@ export class LoanService {
             lateFee = Math.round(loan.principalAmount * 0.005 * daysLate * 100) / 100; // 0.5% / ngày
         }
 
+        // Validate: borrower phải trả đủ số nợ còn lại + late fee
+        const remainingDebt = loan.remainingAmount !== undefined ? loan.remainingAmount : loan.totalAmount;
+        const minimumRequired = Math.round((remainingDebt + lateFee) * 100) / 100;
+        if (dto.amount < minimumRequired - 0.01) { // epsilon 0.01 cho floating point
+            throw new BadRequestException(
+                `Số tiền thanh toán không đủ. Cần ít nhất ${minimumRequired} USDT (nợ còn lại: ${remainingDebt}, phí trễ hạn: ${lateFee})`
+            );
+        }
+
         // 4. Tạo repayment record
         const repayment = await this.repaymentModel.create({
             loanId: loan._id,

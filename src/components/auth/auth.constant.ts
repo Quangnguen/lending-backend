@@ -16,5 +16,8 @@ export const TOKEN_TYPE_ENUM = {
 };
 
 export const KEY_PASSWORD_RESET = 'password_reset';
+export const PASSWORD_RESET_EXPIRES = 1000 * 60 * 60 * 12; // 12h (legacy — không dùng nữa)
 
-export const PASSWORD_RESET_EXPIRES = 1000 * 60 * 60 * 12; // 12h
+// Forgot-password OTP: 6 chữ số, hết hạn sau 15 phút
+export const KEY_FORGOT_OTP = 'forgot-otp';
+export const FORGOT_OTP_EXPIRES = 1000 * 60 * 15; // 15 phút

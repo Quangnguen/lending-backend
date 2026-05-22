@@ -12,6 +12,8 @@ import {
   AUTH_CONST,
   KEY_PASSWORD_RESET,
   PASSWORD_RESET_EXPIRES,
+  KEY_FORGOT_OTP,
+  FORGOT_OTP_EXPIRES,
 } from './auth.constant';
 import { SALT_ROUNDS_PASSWORD } from '@components/user/user.constant';
 import {
@@ -42,6 +44,7 @@ import { UserRepositoryInterface } from '@database/repository/user/user.reposito
 import { RefreshTokenRequestDto } from '@components/auth/dto/request/refresh-token.request.dto';
 import { RefreshTokenResponseDto } from '@components/auth/dto/response/refresh-token.response.dto';
 import { ForgotPasswordRequestDto } from '@components/auth/dto/request/forgot-password.request.dto';
+import { ResetPasswordRequestDto } from '@components/auth/dto/request/reset-password.request.dto';
 import { VerifyEmailRequestDto } from './dto/request/verify-email.request.dto';
 import { ResendOtpRequestDto } from './dto/request/resend-otp.request.dto';
 import { VerifyLoginOtpRequestDto } from './dto/request/verify-login-otp.request.dto';
@@ -396,7 +399,8 @@ export class AuthService {
 
   // Thêm vào auth.service.ts
 
-  async logout(request: LogoutRequestDto) {
+  // FIX HIGH-6: Nhận accessToken để blacklist — token không dùng được ngay sau logout.
+  async logout(request: LogoutRequestDto, accessToken?: string) {
     const { user, deviceId, logoutAll } = request;
 
     if (!user) {
@@ -408,7 +412,6 @@ export class AuthService {
 
     try {
       if (logoutAll) {
-        // Logout from all devices
         const count = await this.userSessionRepository.deactivateAllSessions(
           user._id,
         );
@@ -416,15 +419,29 @@ export class AuthService {
           `User ${user.email} logged out from all ${count} devices`,
         );
       } else if (deviceId) {
-        // Logout from specific device
         await this.userSessionRepository.deactivateSession(user._id, deviceId);
-        this.logger.log(`User ${user.email} logged out from device: ${deviceId}
-          `);
+        this.logger.log(`User ${user.email} logged out from device: ${deviceId}`);
       } else {
-        // If no deviceId provided, just return success (token-based logout handled by client)
-        this.logger.log(
-          `User ${user.email} logged out (token cleared on client)`,
-        );
+        this.logger.log(`User ${user.email} logged out`);
+      }
+
+      // FIX HIGH-6: Blacklist access token với TTL = thời gian còn lại của token.
+      // Mọi request tiếp theo dùng token này sẽ bị AuthenGuard từ chối.
+      if (accessToken) {
+        try {
+          const decoded = this.jwtService.decode(accessToken) as { exp?: number } | null;
+          const now = Math.floor(Date.now() / 1000);
+          const remainingSeconds = decoded?.exp ? decoded.exp - now : 0;
+          if (remainingSeconds > 0) {
+            await this.cacheManager.set(
+              `bl:${accessToken}`,
+              '1',
+              remainingSeconds * 1000, // cache-manager dùng ms
+            );
+          }
+        } catch {
+          // Non-blocking: nếu Redis lỗi, logout vẫn thành công
+        }
       }
 
       return new ResponseBuilder()
@@ -451,36 +468,62 @@ export class AuthService {
       );
     }
 
-    const passwordReset = generateRandomString(
-      AUTH_CONST.PASSWORD.LENGTH_DEFAULT,
-    );
+    // Tạo OTP 6 chữ số, hết hạn sau 15 phút
+    const otp = generateRandomString(6, 'numeric');
+    const cacheKey = `${KEY_FORGOT_OTP}:${email}`;
+    await this.cacheManager.set(cacheKey, otp, FORGOT_OTP_EXPIRES);
 
-    this.logger.log(`PASSWORD RESET: ${passwordReset}`);
+    // KHÔNG logger.log OTP — fix CRITICAL-1
 
-    const hashPassword = await bcrypt.hash(passwordReset, SALT_ROUNDS_PASSWORD);
-
-    await this.cacheManager.set(
-      `${KEY_PASSWORD_RESET}-${user._id.toString()}`,
-      hashPassword,
-      PASSWORD_RESET_EXPIRES,
-    );
-
-    const payloadSendEmail = {
+    this.eventEmitter.emit(EVENT_ENUM.SEND_MAIL, {
       email,
       body: {
         template: MAIL_TEMPLATE_ENUM.FORGOT_PASSWORD,
         subject: this.i18n.translate('email.FORGOT_PASSWORD_SUBJECT'),
-        context: {
-          passwordReset,
-        },
+        context: { otp },
       },
-    } as SendMailRequestDto;
-
-    this.eventEmitter.emit(EVENT_ENUM.SEND_MAIL, payloadSendEmail);
+    } as SendMailRequestDto);
 
     return new ResponseBuilder()
       .withCode(ResponseCodeEnum.SUCCESS)
-      .withMessage(this.i18n.translate('message.NEW_PASSWORD_SENT_TO_EMAIL'))
+      .withMessage(this.i18n.translate('message.FORGOT_PASSWORD_OTP_SENT'))
+      .build();
+  }
+
+  async resetPassword(request: ResetPasswordRequestDto) {
+    const { email, otp, newPassword } = request;
+
+    const user = await this.userRepository.findOne({ email });
+    if (isEmpty(user)) {
+      throw new BusinessException(
+        this.i18n.translate('error.USER_NOT_FOUND'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    // Kiểm tra OTP từ Redis
+    const cacheKey = `${KEY_FORGOT_OTP}:${email}`;
+    const cachedOtp = await this.cacheManager.get<string>(cacheKey);
+
+    if (!cachedOtp || cachedOtp !== otp) {
+      throw new BusinessException(
+        this.i18n.translate('error.INVALID_OTP'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
+
+    // Xóa OTP ngay sau khi xác thực — one-time use
+    await this.cacheManager.del(cacheKey);
+
+    // Gán plaintext — pre-save hook trong UserSchema tự hash bcrypt
+    user.passwordHash = newPassword;
+    await user.save();
+
+    this.logger.log(`Password reset completed for ${email}`);
+
+    return new ResponseBuilder()
+      .withCode(ResponseCodeEnum.SUCCESS)
+      .withMessage(this.i18n.translate('message.RESET_PASSWORD_SUCCESS'))
       .build();
   }
 

@@ -2,12 +2,19 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
+    "deleteOutDir": false,
     "assets": [
       {
-        "include": "i18n/**/*.json"
+        "include": "i18n/**/*.json",
+        "watchAssets": true
       },
       {
-        "include": "static/**/*"
+        "include": "static/**/*",
+        "watchAssets": true
+      },
+      {
+        "include": "views/**/*",
+        "watchAssets": true
       }
     ],
     "watchAssets": true

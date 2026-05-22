@@ -21,11 +21,13 @@ import {
   ApiBody,
   ApiParam,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { LocalKycService } from './local-kyc.service';
 import { KycService } from './kyc.service';
 import { KycCloudinaryService } from './kyc-cloudinary.service';
+import { KYC_STEP_STATUS } from '@database/schemas/kyc-record.model';
 import { RoleGuard } from '@core/guards/role.guard';
 import { Roles } from '@core/decorators/roles.decorator';
 import { ROLE_ENUM } from '@constant/p2p-lending.enum';
@@ -54,6 +56,7 @@ export class KycController {
 
   // ─── Bước 1: Upload ảnh CCCD → OCR → Upload Cloudinary → Lưu kết quả ────
   @Post('recognize-id')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'OCR nhận dạng CMND/CCCD và lưu ảnh lên Cloudinary' })
   @ApiConsumes('multipart/form-data')
@@ -121,6 +124,7 @@ export class KycController {
 
   // ─── Bước 2: Upload selfie + CCCD → So khớp mặt → Upload Cloudinary ───────
   @Post('face-match')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'So khớp khuôn mặt và lưu ảnh selfie lên Cloudinary' })
   @ApiConsumes('multipart/form-data')
@@ -192,6 +196,7 @@ export class KycController {
 
   // ─── Bước 3: Hoàn tất KYC ────────────────────────────────────────────────
   @Post('complete')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Hoàn tất xác thực KYC' })
   async completeKYC(@Request() req) {
@@ -202,8 +207,15 @@ export class KycController {
     }
 
     const currentStatus = await this.kycService.getKYCStatus(userId);
-    if (currentStatus.status === 'NOT_STARTED') {
-      throw new BadRequestException('Bạn chưa thực hiện xác thực CMND/CCCD (Bước 1)');
+    // BUG-1 FIX: yêu cầu đủ cả bước 1 (ID) lẫn bước 2 (face) trước khi complete
+    if (currentStatus.status !== KYC_STEP_STATUS.FACE_VERIFIED) {
+      const hint =
+        currentStatus.status === KYC_STEP_STATUS.NOT_STARTED
+          ? 'Bạn chưa thực hiện xác thực CMND/CCCD (Bước 1)'
+          : currentStatus.status === KYC_STEP_STATUS.ID_VERIFIED
+            ? 'Bạn chưa hoàn thành xác thực khuôn mặt (Bước 2)'
+            : 'Vui lòng hoàn thành đủ cả hai bước xác thực trước khi hoàn tất KYC';
+      throw new BadRequestException(hint);
     }
 
     this.logger.log(`KYC Step 3: Completing KYC for user ${userId} (current: ${currentStatus.status})`);

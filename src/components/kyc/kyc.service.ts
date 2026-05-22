@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { KycRecord, KycRecordDocument, KYC_STEP_STATUS } from '@database/schemas/kyc-record.model';
 import { User, UserDocument } from '@database/schemas/user.model';
 import { encrypt } from '@core/utils/encryption.util';
+import { KycCloudinaryService } from './kyc-cloudinary.service';
 
 @Injectable()
 export class KycService {
@@ -14,6 +15,7 @@ export class KycService {
     private kycRecordModel: Model<KycRecordDocument>,
     @InjectModel(User.name)
     private userModel: Model<UserDocument>,
+    private kycCloudinaryService: KycCloudinaryService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -228,14 +230,19 @@ export class KycService {
     const record = await this.kycRecordModel
       .findOne({ userId: new Types.ObjectId(userId) });
 
+    // BUG-3 FIX: ảnh được lưu với type 'authenticated' trên Cloudinary —
+    // cần tạo signed URL mới mỗi lần truy cập thay vì trả raw URL
+    const signedUrl = (type: 'id_front' | 'id_back' | 'selfie', exists: boolean) =>
+      exists ? this.kycCloudinaryService.generateSignedUrl(userId, type) : null;
+
     return {
       status: record?.status || KYC_STEP_STATUS.NOT_STARTED,
       idInfo: record?.idInfo || null,
       faceMatchScore: record?.faceMatchScore || null,
       completedAt: record?.completedAt || null,
-      frontIdImageUrl: record?.frontIdImageUrl || null,
-      backIdImageUrl: record?.backIdImageUrl || null,
-      selfieImageUrl: record?.selfieImageUrl || null,
+      frontIdImageUrl: signedUrl('id_front', !!record?.frontIdImageUrl),
+      backIdImageUrl: signedUrl('id_back', !!record?.backIdImageUrl),
+      selfieImageUrl: signedUrl('selfie', !!record?.selfieImageUrl),
       reKycReason: record?.reKycReason || null,
       reKycRequestedAt: record?.reKycRequestedAt || null,
     };

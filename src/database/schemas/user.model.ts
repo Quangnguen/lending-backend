@@ -106,8 +106,12 @@ export class User extends BaseModel {
   kycRejectionReason: string;
 
   // ==================== Wallet & Balance ====================
+  // FIX HIGH-4: unique+sparse — một ví chỉ thuộc về một user.
+  // sparse: true cho phép null (user chưa kết nối ví).
   @Prop({
     type: String,
+    unique: true,
+    sparse: true,
     maxlength: 42,
   })
   walletAddress: string; // Ethereum address

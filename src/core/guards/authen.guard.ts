@@ -10,6 +10,7 @@ import { Request } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
 import { I18nService } from 'nestjs-i18n';
+import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 
 import { ConfigService } from '@nestjs/config';
 import { AllConfigType } from '@config/config.type';
@@ -38,6 +39,9 @@ export class AuthenGuard implements CanActivate {
 
     @Inject('UserRepositoryInterface')
     private readonly userRepository: UserRepositoryInterface,
+
+    @Inject(CACHE_MANAGER)
+    private readonly cacheManager: Cache,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -60,6 +64,15 @@ export class AuthenGuard implements CanActivate {
     const authConfig = this.configService.get('auth', {
       infer: true,
     });
+
+    // FIX HIGH-6: Từ chối token đã bị blacklist (logout rồi)
+    const isBlacklisted = await this.cacheManager.get<string>(`bl:${token}`);
+    if (isBlacklisted) {
+      throw new BusinessException(
+        this.i18n.translate('error.TOKEN_INVALID'),
+        ResponseCodeEnum.BAD_REQUEST,
+      );
+    }
 
     let payload: IJwtPayload | null = null;
 

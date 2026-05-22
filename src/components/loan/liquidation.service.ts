@@ -151,10 +151,13 @@ export class LiquidationService {
      */
     private async processOverdue(loan: any) {
         try {
-            await this.loanModel.updateOne(
-                { _id: loan._id },
+            // Atomic update: chỉ cập nhật nếu loan vẫn ACTIVE (tránh double-penalty khi 2 cron race)
+            const result = await this.loanModel.updateOne(
+                { _id: loan._id, status: LOAN_STATUS_ENUM.ACTIVE },
                 { $set: { status: LOAN_STATUS_ENUM.OVERDUE } },
             );
+
+            if (result.modifiedCount === 0) return; // Đã xử lý bởi cron khác, bỏ qua
 
             // Penalty
             const borrowerId = loan.borrowerId.toString();

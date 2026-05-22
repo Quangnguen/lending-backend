@@ -6,16 +6,9 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { createWorker, Worker } from 'tesseract.js';
-
-// ─── Lazy-load canvas (has pre-built binaries for most platforms) ───────────
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-let canvasLib: { loadImage: (...args: any[]) => any; createCanvas: (...args: any[]) => any } | null = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  canvasLib = require('canvas');
-} catch {
-  // canvas not installed — face matching will return mock result
-}
+import { Jimp } from 'jimp';
+import axios from 'axios';
+import FormData from 'form-data';
 
 // ─── Interfaces (giữ nguyên để controller không cần sửa) ──────────────────
 
@@ -60,7 +53,6 @@ export interface KYCVerificationResult {
 @Injectable()
 export class LocalKycService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LocalKycService.name);
-  private canvasReady = false;
 
   // ── Persistent Tesseract worker ────────────────────────────────────────
   private ocrWorker: Worker | null = null;
@@ -90,15 +82,7 @@ export class LocalKycService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`[OCR] Failed to init worker: ${err.message}`);
     }
 
-    // 2. Canvas cho face matching
-    if (canvasLib) {
-      this.canvasReady = true;
-      this.logger.log('✅ Canvas loaded — face similarity comparison ready');
-    } else {
-      this.logger.warn(
-        '⚠️  Canvas not available. Run: npm install canvas --legacy-peer-deps',
-      );
-    }
+    this.logger.log('✅ Jimp loaded — face similarity comparison ready');
   }
 
   async onModuleDestroy() {
@@ -109,13 +93,87 @@ export class LocalKycService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // ── Bước 1: OCR đọc thông tin CCCD bằng Tesseract.js ───────────────────
+  // ── Bước 1: OCR — thử FPT AI trước, fallback Tesseract ─────────────────
   async recognizeID(
     imageBuffer: Buffer,
     filename: string,
   ): Promise<IDRecognitionResult> {
-    const t0 = Date.now();
     this.logger.log(`[OCR] Processing: ${filename} (${(imageBuffer.length / 1024).toFixed(1)} KB)`);
+
+    // 1. FPT AI eKYC (chính xác hơn cho CCCD Việt Nam)
+    const fptResult = await this.recognizeIDWithFptAi(imageBuffer, filename);
+    if (fptResult) return fptResult;
+
+    // 2. Fallback: Tesseract.js (local)
+    this.logger.warn(`[OCR] FPT AI unavailable — falling back to Tesseract`);
+    return this.recognizeIDWithTesseract(imageBuffer, filename);
+  }
+
+  // ── FPT AI eKYC ─────────────────────────────────────────────────────────
+  private async recognizeIDWithFptAi(
+    imageBuffer: Buffer,
+    filename: string,
+  ): Promise<IDRecognitionResult | null> {
+    const apiKey = process.env.FPT_AI_API_KEY;
+    if (!apiKey) return null;
+
+    try {
+      const form = new FormData();
+      form.append('image', imageBuffer, {
+        filename: filename || 'id.jpg',
+        contentType: 'image/jpeg',
+      });
+
+      const { data: res } = await axios.post(
+        'https://api.fpt.ai/vision/idr/vnm',
+        form,
+        {
+          headers: { 'api-key': apiKey, ...form.getHeaders() },
+          timeout: 15000,
+        },
+      );
+
+      if (res?.errorCode !== 0 || !res?.data?.length) {
+        this.logger.warn(`[FPT AI] Response error: ${res?.errorMessage || 'no data'}`);
+        return null;
+      }
+
+      const d = res.data[0];
+      this.logger.log(
+        `[FPT AI] ✅ id:${d.id} name:${d.name} type:${d.type}`,
+      );
+
+      // Chuẩn hoá type: CCCD_CHIP_FRONT/BACK → CCCD, CMND_*  → CMND
+      const docType = /CCCD/i.test(d.type || '') ? 'CCCD' : 'CMND';
+
+      return {
+        id: d.id || '',
+        name: d.name || '',
+        dob: d.dob || '',
+        sex: d.sex || '',
+        nationality: d.nationality || 'Việt Nam',
+        home: d.home || '',
+        address: d.address || '',
+        doe: d.doe || '',
+        type: docType,
+        features: d.features || '',
+        issue_date: d.issue_date || '',
+        issue_loc: d.issue_loc || '',
+        // id_prob là chuỗi "0.985..." → chuyển thành 0-1
+        confidence: d.id_prob ? parseFloat(d.id_prob) : undefined,
+      };
+    } catch (err: any) {
+      this.logger.warn(`[FPT AI] Request failed: ${err.message}`);
+      return null;
+    }
+  }
+
+  // ── Tesseract.js (fallback) ──────────────────────────────────────────────
+  private async recognizeIDWithTesseract(
+    imageBuffer: Buffer,
+    filename: string,
+  ): Promise<IDRecognitionResult> {
+    const t0 = Date.now();
 
     // ── Chờ worker sẵn sàng (tối đa 10s) ──────────────────────────────────
     if (!this.ocrWorkerReady || !this.ocrWorker) {
@@ -136,11 +194,11 @@ export class LocalKycService implements OnModuleInit, OnModuleDestroy {
 
     this.ocrBusy = true;
     try {
-      const { data: { text } } = await this.ocrWorker.recognize(imageBuffer);
+      const { data: { text, confidence } } = await this.ocrWorker.recognize(imageBuffer);
       const elapsed = Date.now() - t0;
-      this.logger.log(`[OCR] Done in ${elapsed}ms — ${text.length} chars extracted`);
+      this.logger.log(`[OCR] Done in ${elapsed}ms — ${text.length} chars, confidence ${confidence?.toFixed(1)}%`);
       this.logger.debug(`[OCR] Raw text:\n${text.substring(0, 500)}`);
-      return this.parseCCCDText(text);
+      return this.parseCCCDText(text, confidence);
     } finally {
       this.ocrBusy = false;
     }
@@ -158,53 +216,36 @@ export class LocalKycService implements OnModuleInit, OnModuleDestroy {
         preserve_interword_spaces: '1',
         tessedit_char_blacklist: '|\\~`^{}[]<>',
       });
-      const { data: { text } } = await worker.recognize(imageBuffer);
-      this.logger.debug(`[OCR-Fallback] ${filename}: ${text.length} chars`);
-      return this.parseCCCDText(text);
+      const { data: { text, confidence } } = await worker.recognize(imageBuffer);
+      this.logger.debug(`[OCR-Fallback] ${filename}: ${text.length} chars, confidence ${confidence?.toFixed(1)}%`);
+      return this.parseCCCDText(text, confidence);
     } finally {
       await worker.terminate();
     }
   }
 
-  // ── Bước 2: So khớp khuôn mặt (pixel MSE similarity) ───────────────────
+  // ── Bước 2: So khớp khuôn mặt (pixel MSE similarity, dùng Jimp) ──────────
   async matchFaces(
     idImageBuffer: Buffer,
     selfieBuffer: Buffer,
   ): Promise<FaceMatchResult> {
-    // Fallback khi canvas không khả dụng
-    if (!this.canvasReady || !canvasLib) {
-      this.logger.warn('[FaceMatch] Canvas not available, returning mock result');
-      return {
-        isMatch: true,
-        similarity: 80,
-        message: 'Xác thực khuôn mặt thành công (chế độ demo)',
-      };
-    }
-
-    this.logger.log('[FaceMatch] Comparing faces via pixel similarity...');
+    this.logger.log('[FaceMatch] Comparing faces via pixel similarity (Jimp)...');
 
     try {
-      const { loadImage, createCanvas } = canvasLib;
-      const SIZE = 128; // resize cả 2 ảnh về 128×128
+      const SIZE = 128;
 
       const [img1, img2] = await Promise.all([
-        loadImage(idImageBuffer),
-        loadImage(selfieBuffer),
+        Jimp.read(idImageBuffer),
+        Jimp.read(selfieBuffer),
       ]);
 
-      const getGrayscalePixels = (img: any): Uint8ClampedArray => {
-        const canvas = createCanvas(SIZE, SIZE);
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, SIZE, SIZE);
-        return ctx.getImageData(0, 0, SIZE, SIZE).data;
-      };
+      img1.resize({ w: SIZE, h: SIZE });
+      img2.resize({ w: SIZE, h: SIZE });
 
-      const [d1, d2] = [
-        getGrayscalePixels(img1),
-        getGrayscalePixels(img2),
-      ];
+      const d1 = img1.bitmap.data;
+      const d2 = img2.bitmap.data;
 
-      // Tính MSE trên kênh grayscale
+      // Tính MSE trên kênh grayscale (RGBA flat array, step=4)
       let mse = 0;
       const total = SIZE * SIZE;
       for (let i = 0; i < d1.length; i += 4) {
@@ -231,7 +272,6 @@ export class LocalKycService implements OnModuleInit, OnModuleDestroy {
           : `Khuôn mặt không khớp (${similarity}%). Vui lòng thử lại.`,
       };
     } catch (err: any) {
-      if (err instanceof BadRequestException) throw err;
       this.logger.error(`[FaceMatch] Error: ${err.message}`);
       throw new BadRequestException('Lỗi xác thực khuôn mặt. Vui lòng thử lại.');
     }
@@ -314,7 +354,7 @@ export class LocalKycService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ── Helper: parse text OCR → IDRecognitionResult ────────────────────────
-  private parseCCCDText(rawText: string): IDRecognitionResult {
+  private parseCCCDText(rawText: string, ocrConfidence?: number): IDRecognitionResult {
     // Tiền xử lý
     const text = rawText
       .replace(/\r/g, '')
@@ -526,7 +566,7 @@ export class LocalKycService implements OnModuleInit, OnModuleDestroy {
       features,
       issue_date: issueDate,
       issue_loc: issueLoc,
-      confidence: 0.8,
+      confidence: ocrConfidence != null ? Math.round(ocrConfidence) / 100 : undefined,
     };
   }
 }
