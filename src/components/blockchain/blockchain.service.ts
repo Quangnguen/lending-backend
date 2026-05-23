@@ -314,19 +314,25 @@ export class BlockchainService implements OnModuleInit {
 
     private async handleLoanFundedEvent(requestId: number, lender: string, loanContractAddr: string) {
         try {
-            // Tìm LoanRequest tương ứng trong MongoDB bằng requestId on-chain
-            // (requestId on-chain có thể khác ObjectId, nên tìm bằng các trường khác)
-            // Cập nhật loan contract address nếu loan đã tồn tại
-            const loan = await this.loanModel.findOne({ loanContractAddress: loanContractAddr });
-            if (!loan) {
-                this.logger.log(`Loan contract ${loanContractAddr} chưa có trong DB — sẽ được sync sau`);
+            // onChainRequestId nằm trong LoanRequest, không phải Loan → cần tìm qua 2 bước
+            const loanRequest = await this.loanRequestModel.findOne({ onChainRequestId: requestId });
+            if (!loanRequest) {
+                this.logger.log(`LoanRequest với onChainRequestId=${requestId} chưa có trong DB`);
                 return;
+            }
+            const loan = await this.loanModel.findOne({ requestId: loanRequest._id });
+            if (!loan) {
+                this.logger.log(`Loan cho requestId=${loanRequest._id} chưa có trong DB`);
+                return;
+            }
+            if (!loan.loanContractAddress) {
+                loan.loanContractAddress = loanContractAddr;
             }
             loan.status = LOAN_STATUS_ENUM.ACTIVE;
             await loan.save();
-            this.logger.log(`✅ Đã cập nhật loan ${loan._id} sang ACTIVE`);
+            this.logger.log(`✅ Đã set loanContractAddress=${loanContractAddr} cho loan ${loan._id}`);
 
-            // Attach listener cho loan contract mới
+            // Attach listener cho loan contract mới (idempotent — tránh duplicate listeners)
             this.attachSingleLoanListener(loanContractAddr);
         } catch (error) {
             this.logger.error(`handleLoanFundedEvent error: ${error.message}`);

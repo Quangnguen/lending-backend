@@ -497,7 +497,7 @@ export class LoanService {
         }
 
         // Validate trạng thái
-        if (![LOAN_STATUS_ENUM.ACTIVE, LOAN_STATUS_ENUM.OVERDUE].includes(loan.status)) {
+        if (![LOAN_STATUS_ENUM.ACTIVE, LOAN_STATUS_ENUM.OVERDUE, LOAN_STATUS_ENUM.REPAID].includes(loan.status)) {
             throw new BadRequestException(`Khoản vay không ở trạng thái có thể trả (hiện tại: ${loan.status})`);
         }
 
@@ -516,52 +516,54 @@ export class LoanService {
             lateFee = Math.round(loan.principalAmount * 0.005 * daysLate * 100) / 100; // 0.5% / ngày
         }
 
-        // Validate: borrower phải trả đủ số nợ còn lại + late fee
-        const remainingDebt = loan.remainingAmount !== undefined ? loan.remainingAmount : loan.totalAmount;
-        const minimumRequired = Math.round((remainingDebt + lateFee) * 100) / 100;
-        if (dto.amount < minimumRequired - 0.01) { // epsilon 0.01 cho floating point
-            throw new BadRequestException(
-                `Số tiền thanh toán không đủ. Cần ít nhất ${minimumRequired} USDT (nợ còn lại: ${remainingDebt}, phí trễ hạn: ${lateFee})`
-            );
+        // Validate cơ bản: amount không được âm
+        // Cho phép amount = 0 khi sync từ on-chain (loan đã REPAID trên contract)
+        if (dto.amount < 0) {
+            throw new BadRequestException('Số tiền thanh toán không hợp lệ');
         }
 
-        // 4. Tạo repayment record
-        const repayment = await this.repaymentModel.create({
-            loanId: loan._id,
-            payerId: new Types.ObjectId(userId),
-            installmentNumber: 1, // Single repayment
-            principalAmount: loan.principalAmount,
-            interestAmount: loan.totalInterest,
-            lateFeeAmount: lateFee,
-            totalAmount: dto.amount,
-            paymentMethod: PAYMENT_METHOD_ENUM.CRYPTO,
-            status: REPAYMENT_STATUS_ENUM.COMPLETED,
-            txHash: dto.txHash,
-            paidAt: new Date(),
-        });
+        // 4. Tạo repayment record (chỉ khi chưa REPAID, tránh duplicate)
+        let repayment: any = null;
+        if (loan.status !== LOAN_STATUS_ENUM.REPAID) {
+            repayment = await this.repaymentModel.create({
+                loanId: loan._id,
+                payerId: new Types.ObjectId(userId),
+                installmentNumber: 1,
+                principalAmount: loan.principalAmount,
+                interestAmount: loan.totalInterest,
+                lateFeeAmount: lateFee,
+                totalAmount: dto.amount,
+                paymentMethod: PAYMENT_METHOD_ENUM.CRYPTO,
+                status: REPAYMENT_STATUS_ENUM.COMPLETED,
+                txHash: dto.txHash,
+                paidAt: new Date(),
+            });
+        }
 
         // 5. Cập nhật loan
-        loan.amountPaid = Math.round(((loan.amountPaid || 0) + dto.amount) * 100) / 100;
-        const rawRemaining = (loan.remainingAmount !== undefined ? loan.remainingAmount : loan.totalAmount) - dto.amount;
-        loan.remainingAmount = Math.max(0, Math.round(rawRemaining * 100) / 100);
-        loan.lateFee = lateFee;
-        loan.repayTxHash = dto.txHash;
-        loan.repaidAt = new Date();
-
-        // Nếu trả đủ thì đánh dấu REPAID (dùng epsilon check 0.01 cho an toàn)
-        if (loan.remainingAmount < 0.01) {
+        // Luôn đánh dấu REPAID — contract enforce đúng số tiền on-chain
+        // Nếu loan.loanContractAddress có (on-chain flow) hoặc loan đã REPAID trên chain
+        // thì tin tưởng blockchain, không dùng off-chain math
+        if (loan.loanContractAddress || loan.status === LOAN_STATUS_ENUM.REPAID) {
+            loan.remainingAmount = 0;
             loan.status = LOAN_STATUS_ENUM.REPAID;
-            loan.remainingAmount = 0; // Đảm bảo về 0
+            if (dto.amount > 0) {
+                loan.amountPaid = Math.round(((loan.amountPaid || 0) + dto.amount) * 100) / 100;
+            }
+        } else {
+            // Legacy path (không có smart contract): dùng off-chain math
+            loan.amountPaid = Math.round(((loan.amountPaid || 0) + dto.amount) * 100) / 100;
+            const rawRemaining = (loan.remainingAmount !== undefined ? loan.remainingAmount : loan.totalAmount) - dto.amount;
+            loan.remainingAmount = Math.max(0, Math.round(rawRemaining * 100) / 100);
+            if (loan.remainingAmount < 0.01) {
+                loan.status = LOAN_STATUS_ENUM.REPAID;
+                loan.remainingAmount = 0;
+            }
         }
 
-        // Auto-detect overdue và áp dụng penalty
-        if (lateFee > 0 && loan.status === LOAN_STATUS_ENUM.ACTIVE) {
-            loan.status = LOAN_STATUS_ENUM.OVERDUE;
-            // Trừ điểm tín dụng khi overdue
-            this.creditScoringEngine.applyPenalty(
-                userId, 'OVERDUE', loanId,
-            ).catch(err => this.logger.warn(`Penalty apply failed: ${err.message}`));
-        }
+        loan.lateFee = lateFee;
+        if (dto.txHash) loan.repayTxHash = dto.txHash;
+        loan.repaidAt = loan.repaidAt || new Date();
 
         await loan.save();
 
