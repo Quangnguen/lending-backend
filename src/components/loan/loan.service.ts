@@ -516,8 +516,6 @@ export class LoanService {
             lateFee = Math.round(loan.principalAmount * 0.005 * daysLate * 100) / 100; // 0.5% / ngày
         }
 
-        // Validate cơ bản: amount không được âm
-        // Cho phép amount = 0 khi sync từ on-chain (loan đã REPAID trên contract)
         if (dto.amount < 0) {
             throw new BadRequestException('Số tiền thanh toán không hợp lệ');
         }

@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { KycRecord, KycRecordDocument, KYC_STEP_STATUS } from '@database/schemas/kyc-record.model';
 import { User, UserDocument } from '@database/schemas/user.model';
-import { encrypt } from '@core/utils/encryption.util';
+import { encrypt, decrypt } from '@core/utils/encryption.util';
 import { KycCloudinaryService } from './kyc-cloudinary.service';
 
 @Injectable()
@@ -29,9 +29,14 @@ export class KycService {
 
     const encryptedCccd = encrypt(cccdNumber);
 
+    // Query cả plaintext (record cũ) lẫn encrypted (record mới)
+    // để tránh bỏ sót khi data được migrate hoặc tạo trước khi có hook mã hoá
     const existing = await this.kycRecordModel
       .findOne({
-        'idInfo.id': encryptedCccd,
+        $or: [
+          { 'idInfo.id': cccdNumber },
+          { 'idInfo.id': encryptedCccd },
+        ],
         userId: { $ne: new Types.ObjectId(currentUserId) },
       })
       .select('userId status')
@@ -136,6 +141,16 @@ export class KycService {
   // Bước 3: Hoàn tất KYC
   // ─────────────────────────────────────────────────────────────────────────
   async completeKYC(userId: string) {
+    // Re-check CCCD duplicate tại thời điểm hoàn tất (chặn bypass API)
+    const pending = await this.kycRecordModel
+      .findOne({ userId: new Types.ObjectId(userId) })
+      .lean();
+    if (pending?.idInfo?.id) {
+      // idInfo.id trong lean() là raw value — giải mã để lấy số thuần tuý
+      const rawId = decrypt(pending.idInfo.id as string);
+      await this.checkDuplicateCCCD(rawId, userId);
+    }
+
     const record = await this.kycRecordModel.findOneAndUpdate(
       { userId: new Types.ObjectId(userId) },
       {
