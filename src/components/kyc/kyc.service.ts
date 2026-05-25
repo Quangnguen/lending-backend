@@ -3,8 +3,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { KycRecord, KycRecordDocument, KYC_STEP_STATUS } from '@database/schemas/kyc-record.model';
 import { User, UserDocument } from '@database/schemas/user.model';
+import { AdminAction, AdminActionDocument } from '@database/schemas/admin-action.model';
 import { encrypt, decrypt } from '@core/utils/encryption.util';
 import { KycCloudinaryService } from './kyc-cloudinary.service';
+import { NotificationService } from '../notification/notification.service';
+import { ADMIN_TARGET_TYPE_ENUM } from '@constant/p2p-lending.enum';
 
 @Injectable()
 export class KycService {
@@ -15,7 +18,10 @@ export class KycService {
     private kycRecordModel: Model<KycRecordDocument>,
     @InjectModel(User.name)
     private userModel: Model<UserDocument>,
+    @InjectModel(AdminAction.name)
+    private adminActionModel: Model<AdminActionDocument>,
     private kycCloudinaryService: KycCloudinaryService,
+    private notificationService: NotificationService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -182,8 +188,8 @@ export class KycService {
           kycVerifiedAt: new Date(),
         },
       });
-    } catch (e) {
-      this.logger.error(`Failed to sync KYC status to User model: ${e.message}`);
+    } catch (e: any) {
+      this.logger.error(`Failed to sync KYC status to User model: ${e?.message}`);
     }
 
     this.logger.log(`[KYC] ✅ Completed for user ${userId}`);
@@ -277,5 +283,141 @@ export class KycService {
       completedAt: record?.completedAt || null,
       reKycReason: record?.reKycReason || null,
     };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Admin: Danh sách KYC chờ duyệt (status = COMPLETED)
+  // ─────────────────────────────────────────────────────────────────────────
+  async getPendingKYCList(page: number = 1, limit: number = 20) {
+    const skip = (page - 1) * limit;
+    const query = { status: KYC_STEP_STATUS.COMPLETED };
+
+    const [records, total] = await Promise.all([
+      this.kycRecordModel
+        .find(query)
+        .populate('userId', 'fullName email kycStatus createdAt')
+        .sort({ completedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.kycRecordModel.countDocuments(query),
+    ]);
+
+    const data = records.map(r => {
+      const uid = (r.userId as any)?._id?.toString() || '';
+      return {
+        _id: r._id,
+        userId: r.userId,
+        status: r.status,
+        faceMatchScore: r.faceMatchScore,
+        completedAt: r.completedAt,
+        frontIdImageUrl: r.frontIdImageUrl
+          ? this.kycCloudinaryService.generateSignedUrl(uid, 'id_front')
+          : null,
+        backIdImageUrl: r.backIdImageUrl
+          ? this.kycCloudinaryService.generateSignedUrl(uid, 'id_back')
+          : null,
+        selfieImageUrl: r.selfieImageUrl
+          ? this.kycCloudinaryService.generateSignedUrl(uid, 'selfie')
+          : null,
+      };
+    });
+
+    return { data, total, page, totalPages: Math.ceil(total / limit) };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Admin: Phê duyệt KYC
+  // ─────────────────────────────────────────────────────────────────────────
+  async approveKYC(adminId: string, targetUserId: string, note?: string) {
+    const record = await this.kycRecordModel.findOne({
+      userId: new Types.ObjectId(targetUserId),
+    });
+    if (!record) {
+      throw new NotFoundException('Không tìm thấy hồ sơ KYC của người dùng này');
+    }
+    if (record.status !== KYC_STEP_STATUS.COMPLETED) {
+      throw new NotFoundException(`Không thể duyệt KYC ở trạng thái: ${record.status}`);
+    }
+
+    // Cập nhật User
+    await this.userModel.findByIdAndUpdate(targetUserId, {
+      $set: { kycStatus: 'verified', isVerified: true, kycVerifiedAt: new Date() },
+    });
+
+    // Ghi admin action
+    await this.adminActionModel.create({
+      adminId: new Types.ObjectId(adminId),
+      actionType: 'APPROVE_KYC',
+      targetType: ADMIN_TARGET_TYPE_ENUM.KYC,
+      targetId: new Types.ObjectId(targetUserId),
+      oldValue: { kycStatus: 'pending' },
+      newValue: { kycStatus: 'verified' },
+      reason: note || 'Hồ sơ hợp lệ',
+    });
+
+    // Thông báo cho user
+    try {
+      await this.notificationService.createNotification(
+        targetUserId,
+        '✅ KYC được phê duyệt',
+        'Hồ sơ xác minh danh tính của bạn đã được chấp thuận. Bạn có thể sử dụng đầy đủ tính năng vay và cho vay.',
+        'SYSTEM',
+      );
+    } catch (e: any) {
+      this.logger.warn(`[KYC] Could not send approval notification: ${e?.message}`);
+    }
+
+    this.logger.log(`[KYC] ✅ Approved by admin ${adminId} for user ${targetUserId}`);
+    return { success: true, message: 'KYC đã được phê duyệt thành công' };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Admin: Từ chối KYC
+  // ─────────────────────────────────────────────────────────────────────────
+  async rejectKYC(adminId: string, targetUserId: string, reason: string) {
+    const record = await this.kycRecordModel.findOne({
+      userId: new Types.ObjectId(targetUserId),
+    });
+    if (!record) {
+      throw new NotFoundException('Không tìm thấy hồ sơ KYC của người dùng này');
+    }
+
+    // Cập nhật KycRecord
+    await this.kycRecordModel.findOneAndUpdate(
+      { userId: new Types.ObjectId(targetUserId) },
+      { $set: { status: KYC_STEP_STATUS.REJECTED, rejectionReason: reason } },
+    );
+
+    // Cập nhật User
+    await this.userModel.findByIdAndUpdate(targetUserId, {
+      $set: { kycStatus: 'rejected', isVerified: false },
+    });
+
+    // Ghi admin action
+    await this.adminActionModel.create({
+      adminId: new Types.ObjectId(adminId),
+      actionType: 'REJECT_KYC',
+      targetType: ADMIN_TARGET_TYPE_ENUM.KYC,
+      targetId: new Types.ObjectId(targetUserId),
+      oldValue: { status: record.status },
+      newValue: { status: KYC_STEP_STATUS.REJECTED, rejectionReason: reason },
+      reason,
+    });
+
+    // Thông báo cho user
+    try {
+      await this.notificationService.createNotification(
+        targetUserId,
+        '❌ KYC bị từ chối',
+        `Hồ sơ xác minh của bạn bị từ chối. Lý do: ${reason}. Vui lòng thực hiện lại KYC sau khi đọc hướng dẫn.`,
+        'SYSTEM',
+      );
+    } catch (e: any) {
+      this.logger.warn(`[KYC] Could not send rejection notification: ${e?.message}`);
+    }
+
+    this.logger.log(`[KYC] ❌ Rejected by admin ${adminId} for user ${targetUserId}: ${reason}`);
+    return { success: true, message: 'KYC đã bị từ chối' };
   }
 }

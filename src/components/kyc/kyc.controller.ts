@@ -5,6 +5,7 @@ import {
   Patch,
   Body,
   Param,
+  Query,
   Request,
   UseInterceptors,
   UploadedFile,
@@ -20,6 +21,7 @@ import {
   ApiConsumes,
   ApiBody,
   ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
@@ -280,5 +282,55 @@ export class KycController {
 
     const adminId = req.user?._id?.toString() || req.user?.id;
     return this.kycService.requireReverify(targetUserId, reason.trim(), adminId);
+  }
+
+  // ─── Admin: Danh sách KYC chờ duyệt ─────────────────────────────────────
+  @Get('admin/pending-list')
+  @ApiBearerAuth()
+  @UseGuards(RoleGuard)
+  @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+  @ApiOperation({ summary: '[Admin] Danh sách KYC đang chờ xét duyệt' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getPendingKYCList(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.kycService.getPendingKYCList(Number(page) || 1, Number(limit) || 20);
+  }
+
+  // ─── Admin: Phê duyệt KYC ────────────────────────────────────────────────
+  @Post('admin/approve/:targetId')
+  @ApiBearerAuth()
+  @UseGuards(RoleGuard)
+  @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+  @ApiOperation({ summary: '[Admin] Phê duyệt KYC cho người dùng' })
+  @ApiParam({ name: 'targetId', description: 'ID người dùng cần duyệt KYC' })
+  async approveKYC(
+    @Request() req,
+    @Param('targetId') targetUserId: string,
+    @Body('note') note?: string,
+  ) {
+    const adminId = req.user?._id?.toString() || req.user?.id;
+    return this.kycService.approveKYC(adminId, targetUserId, note);
+  }
+
+  // ─── Admin: Từ chối KYC ──────────────────────────────────────────────────
+  @Post('admin/reject/:targetId')
+  @ApiBearerAuth()
+  @UseGuards(RoleGuard)
+  @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+  @ApiOperation({ summary: '[Admin] Từ chối KYC cho người dùng' })
+  @ApiParam({ name: 'targetId', description: 'ID người dùng cần từ chối KYC' })
+  async rejectKYC(
+    @Request() req,
+    @Param('targetId') targetUserId: string,
+    @Body('reason') reason: string,
+  ) {
+    if (!reason?.trim()) {
+      throw new BadRequestException('Vui lòng nhập lý do từ chối KYC');
+    }
+    const adminId = req.user?._id?.toString() || req.user?.id;
+    return this.kycService.rejectKYC(adminId, targetUserId, reason.trim());
   }
 }

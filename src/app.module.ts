@@ -42,6 +42,7 @@ import { LoanModule } from '@components/loan/loan.module';
 import { KycModule } from '@components/kyc/kyc.module';
 import { BlockchainModule } from '@components/blockchain/blockchain.module';
 import { NotificationModule } from '@components/notification/notification.module';
+import { AdminModule } from '@components/admin/admin.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
@@ -102,6 +103,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     KycModule,
     BlockchainModule,
     NotificationModule,
+    AdminModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
