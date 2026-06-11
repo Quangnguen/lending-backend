@@ -27,7 +27,7 @@ export class KycService {
   // ─────────────────────────────────────────────────────────────────────────
   // Kiểm tra trùng số CCCD/CMND trên toàn hệ thống
   // ─────────────────────────────────────────────────────────────────────────
-  private async checkDuplicateCCCD(
+  async checkDuplicateCCCD(
     cccdNumber: string,
     currentUserId: string,
   ): Promise<void> {
@@ -122,7 +122,13 @@ export class KycService {
     similarity: number,
     isMatch: boolean,
     selfieImageUrl?: string,
+    selfieHash?: string,
   ) {
+    // Kiểm tra khuôn mặt trùng lặp xuyên tài khoản (chỉ khi face match thành công)
+    if (isMatch && selfieHash) {
+      await this.checkDuplicateFace(selfieHash, userId);
+    }
+
     const record = await this.kycRecordModel.findOneAndUpdate(
       { userId: new Types.ObjectId(userId) },
       {
@@ -130,6 +136,7 @@ export class KycService {
           faceMatchScore: similarity,
           status: isMatch ? KYC_STEP_STATUS.FACE_VERIFIED : KYC_STEP_STATUS.REJECTED,
           ...(selfieImageUrl ? { selfieImageUrl } : {}),
+          ...(selfieHash && isMatch ? { selfieHash } : {}),
           ...(isMatch
             ? {}
             : { rejectionReason: 'Khuôn mặt không khớp với ảnh trên giấy tờ' }),
@@ -144,6 +151,47 @@ export class KycService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Kiểm tra khuôn mặt trùng lặp xuyên tài khoản (Hamming distance ≤ 8/64)
+  // ─────────────────────────────────────────────────────────────────────────
+  private async checkDuplicateFace(selfieHash: string, currentUserId: string): Promise<void> {
+    if (!selfieHash || selfieHash.length < 16) return;
+
+    // Lấy tất cả KYC records của user khác đã có selfieHash
+    const others = await this.kycRecordModel
+      .find({
+        userId: { $ne: new Types.ObjectId(currentUserId) },
+        selfieHash: { $exists: true, $ne: '' },
+        status: { $in: [KYC_STEP_STATUS.FACE_VERIFIED, KYC_STEP_STATUS.COMPLETED] },
+      })
+      .select('userId selfieHash')
+      .lean();
+
+    const HAMMING_THRESHOLD = 8; // Tối đa 8/64 bit khác nhau = rất giống nhau
+    for (const record of others) {
+      const dist = this._hammingDistance(selfieHash, record.selfieHash as string);
+      if (dist <= HAMMING_THRESHOLD) {
+        this.logger.warn(
+          `[KYC] ⛔ Duplicate face: user ${currentUserId} vs userId ${record.userId} (hamming=${dist})`,
+        );
+        throw new ConflictException(
+          'Khuôn mặt này đã được đăng ký bởi một tài khoản khác. ' +
+          'Mỗi người chỉ được tạo một tài khoản. Vui lòng liên hệ hỗ trợ nếu có nhầm lẫn.',
+        );
+      }
+    }
+  }
+
+  private _hammingDistance(a: string, b: string): number {
+    if (!a || !b || a.length !== b.length) return 64;
+    let dist = 0;
+    for (let i = 0; i < a.length; i++) {
+      let xor = parseInt(a[i], 16) ^ parseInt(b[i], 16);
+      while (xor) { dist += xor & 1; xor >>= 1; }
+    }
+    return dist;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Bước 3: Hoàn tất KYC
   // ─────────────────────────────────────────────────────────────────────────
   async completeKYC(userId: string) {
@@ -151,11 +199,22 @@ export class KycService {
     const pending = await this.kycRecordModel
       .findOne({ userId: new Types.ObjectId(userId) })
       .lean();
-    if (pending?.idInfo?.id) {
-      // idInfo.id trong lean() là raw value — giải mã để lấy số thuần tuý
-      const rawId = decrypt(pending.idInfo.id as string);
-      await this.checkDuplicateCCCD(rawId, userId);
+
+    // Yêu cầu phải có số CCCD hợp lệ mới được complete
+    if (!pending?.idInfo?.id) {
+      throw new ConflictException(
+        'Không tìm thấy số CCCD/CMND trong hồ sơ. Vui lòng thực hiện lại bước xác thực giấy tờ.',
+      );
     }
+
+    // idInfo.id trong lean() là raw value — giải mã để lấy số thuần tuý
+    const rawId = decrypt(pending.idInfo.id as string);
+    if (!rawId || rawId.length < 9) {
+      throw new ConflictException(
+        'Số CCCD/CMND không hợp lệ. Vui lòng thực hiện lại bước xác thực giấy tờ.',
+      );
+    }
+    await this.checkDuplicateCCCD(rawId, userId);
 
     const record = await this.kycRecordModel.findOneAndUpdate(
       { userId: new Types.ObjectId(userId) },

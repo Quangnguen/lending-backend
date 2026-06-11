@@ -3,6 +3,7 @@
   "NOT_FOUND": "Không tìm thấy bản ghi",
   "EMAIL_OR_PASSWORD_INVALID": "Tài khoản hoặc mật khẩu không chính xác",
   "ACCOUNT_IS_LOCKED": "Tài khoản đã bị khóa vui lòng liên hệ Quản trị viên",
+  "OTP_TOO_MANY_ATTEMPTS": "Quá nhiều lần nhập sai OTP. Vui lòng thử lại sau 15 phút.",
   "STATUS_INVALID": "Trạng thái không hợp lệ",
   "BAD_REQUEST": "Yêu cầu không hợp lệ",
   "OLD_PASSWORD_INVALID": "Mật khẩu cũ không chính xác",

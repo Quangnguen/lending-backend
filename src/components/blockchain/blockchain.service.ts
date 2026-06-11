@@ -93,7 +93,8 @@ export class BlockchainService implements OnModuleInit {
         // Không cần khởi tạo signer cho Oracle ở đây nữa vì đã bỏ tính năng mint DebtToken từ backend
         const privateKey = configService.get<string>('ORACLE_PRIVATE_KEY');
         if (privateKey) {
-            this.logger.log(`Backend có chứa ORACLE_PRIVATE_KEY (dành cho mục đích khác nếu cần)`);
+            // STT-22 FIX: Cảnh báo nếu dùng private key test đã biết
+            this._validatePrivateKey(privateKey, rpcUrl);
         }
 
         const p2pAddress = configService.get('P2P_LENDING_ADDRESS');
@@ -131,6 +132,35 @@ export class BlockchainService implements OnModuleInit {
             await this.startEventListener();
         } catch (error) {
             this.logger.error(`❌ Không thể kết nối blockchain: ${error.message}`);
+        }
+    }
+
+    // STT-22 FIX: Cảnh báo khi dùng private key test hoặc RPC localhost trong production
+    private _validatePrivateKey(privateKey: string, rpcUrl: string): void {
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        // Private key Ganache mặc định (test only) — 64-char hex sau 0x prefix
+        const KNOWN_TEST_KEYS = new Set([
+            '4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d', // Ganache account[0]
+            '6cbed15c793ce57650b9877cf6fa156fbef513c4e6134f022a85b1ffdd59b2a1', // Ganache account[1]
+            '6370fd033278c143179d81c5526140625662b8daa446c22ee2d73db3707e620c', // Ganache account[2]
+        ]);
+
+        const keyNormalized = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+        if (KNOWN_TEST_KEYS.has(keyNormalized.toLowerCase())) {
+            const msg = '[SECURITY] ORACLE_PRIVATE_KEY là private key test (Ganache). KHÔNG dùng trong production!';
+            if (isProduction) {
+                throw new Error(msg);
+            } else {
+                this.logger.warn(msg);
+            }
+        }
+
+        if (isProduction && (rpcUrl.includes('127.0.0.1') || rpcUrl.includes('localhost'))) {
+            this.logger.warn(
+                '[SECURITY] BLOCKCHAIN_RPC_URL đang trỏ localhost trong production. ' +
+                'Dùng node provider thực (Infura/Alchemy/QuickNode).',
+            );
         }
     }
 
@@ -564,7 +594,21 @@ export class BlockchainService implements OnModuleInit {
     }
 
     // ============================
-    // 10. Lấy thống kê blockchain
+    // 10. Kiểm tra yêu cầu vay còn hoạt động trên blockchain
+    // ============================
+    async isRequestActive(onChainRequestId: number): Promise<boolean> {
+        try {
+            if (!this.p2pLendingContract) return true; // fallback: không block nếu contract chưa cấu hình
+            const active = await this.p2pLendingContract.requestActive(onChainRequestId);
+            return Boolean(active);
+        } catch (error) {
+            this.logger.warn(`isRequestActive check failed (requestId=${onChainRequestId}): ${error.message} — allowing through`);
+            return true; // fallback an toàn: nếu không hỏi được blockchain thì cho qua, MongoDB sẽ chặn
+        }
+    }
+
+    // ============================
+    // 11. Lấy thống kê blockchain
     // ============================
     async getBlockchainStats() {
         try {

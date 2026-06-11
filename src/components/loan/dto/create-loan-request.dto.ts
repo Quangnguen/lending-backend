@@ -17,7 +17,7 @@ export class CreateLoanRequestDto {
 
     @ApiProperty({ description: 'Thời hạn vay (ngày)', example: 30 })
     @IsNumber()
-    @IsEnum([7, 14, 30, 60, 90])
+    @IsEnum([7, 14, 30, 60, 90, 120, 180, 270, 365])
     durationDays: number;
 
     @ApiProperty({ description: 'Mục đích vay', enum: LOAN_PURPOSE_ENUM })

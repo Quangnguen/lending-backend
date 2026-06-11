@@ -12,6 +12,7 @@ import { OpenBankingService } from "../openbanking/openbanking.service";
 import { MockOpenBankingService } from "../openbanking/mock/mock-openbanking.service";
 import { VietQRService } from "../openbanking/vietqr.service";
 import { NotificationService } from "../notification/notification.service";
+import { NotificationTypeEnum } from "../notification/enums/notification-type.enum";
 import { CreateLoanRequestDto } from "./dto/create-loan-request.dto";
 import { FundLoanDto } from "./dto/fund-loan.dto";
 import { RepayLoanDto } from "./dto/repay-loan.dto";
@@ -334,13 +335,29 @@ export class LoanService {
         // 0. Xác thực điều kiện tiên quyết: KYC + Bank Connection (Lender cũng cần KYC)
         await this.validateUserFlow(lenderId);
 
-        // 1. Tìm request và validate
-        const request = await this.loanRequestModel.findById(requestId);
-        if (!request) {
-            throw new NotFoundException('Yêu cầu vay không tồn tại');
+        // 1a. Kiểm tra on-chain TRƯỚC — đóng kẽ hở khi server sập sau khi blockchain đã xử lý
+        // Nếu requestActive=false trên blockchain → khoản vay đã được fund dù DB chưa cập nhật
+        if (dto.onChainRequestId != null) {
+            const isActive = await this.blockchainService.isRequestActive(dto.onChainRequestId);
+            if (!isActive) {
+                throw new BadRequestException(
+                    'Khoản vay đã được cấp vốn trên blockchain. Vui lòng làm mới danh sách.',
+                );
+            }
         }
-        if (request.status !== LOAN_REQUEST_STATUS_ENUM.PENDING) {
-            throw new BadRequestException(`Yêu cầu vay không ở trạng thái chờ (hiện tại: ${request.status})`);
+
+        // 1b. Atomic check-and-lock: chỉ 1 lender thắng, tránh race condition
+        // findOneAndUpdate với điều kiện status=PENDING đảm bảo chỉ 1 request thành công
+        const request = await this.loanRequestModel.findOneAndUpdate(
+            { _id: requestId, status: LOAN_REQUEST_STATUS_ENUM.PENDING },
+            { $set: { status: LOAN_REQUEST_STATUS_ENUM.FUNDED } },
+            { new: false }, // trả về document CŨ (trước khi update)
+        );
+        if (!request) {
+            // Không tìm thấy = không tồn tại HOẶC đã được fund bởi lender khác
+            const existing = await this.loanRequestModel.findById(requestId);
+            if (!existing) throw new NotFoundException('Yêu cầu vay không tồn tại');
+            throw new BadRequestException(`Yêu cầu vay đã được cấp vốn hoặc không còn khả dụng (trạng thái: ${existing.status})`);
         }
 
         // Không cho phép tự cho mình vay (kiểm tra cả MongoDB ID)
@@ -380,23 +397,20 @@ export class LoanService {
             fundTxHash: dto.txHash,
         });
 
-        // 5. Cập nhật request status
-        request.status = LOAN_REQUEST_STATUS_ENUM.FUNDED;
-        await request.save();
+        // 5. Status đã được update atomically ở bước 1 (findOneAndUpdate)
 
         // 6. Attach blockchain listener cho loan mới
         if (dto.loanContractAddress) {
             this.blockchainService.attachSingleLoanListener(dto.loanContractAddress);
         }
 
-        // 7. Tạo thông báo cho người vay
-        await this.notificationService.createNotification(
-            request.borrowerId.toString(),
-            '🎉 Giải ngân thành công!',
-            `Tin vui! Khoản vay ${request.loanAmount} USDT của bạn đã được nhà đầu tư rót vốn. Hãy kiểm tra số dư ví USDT của bạn ngay!`,
-            'LOAN',
-            loan._id.toString()
-        );
+        // 7. Tạo thông báo cho người vay (kèm metadata để mobile navigate đúng màn hình)
+        await this.notificationService.notifyLoanFunded({
+            borrowerId: request.borrowerId.toString(),
+            lenderId,
+            loanId: loan._id.toString(),
+            transactionHash: dto.txHash,
+        });
 
         this.logger.log(`💰 Loan funded: ${loan._id} - ${request.loanAmount} USDT - Lender: ${lenderId}`);
 
@@ -565,18 +579,31 @@ export class LoanService {
 
         await loan.save();
 
-        // 6. Gửi thông báo cho Lender
+        // 6. Gửi thông báo cho Lender và Borrower kèm metadata
         if (loan.lenderId) {
-            await this.notificationService.createNotification(
+            const isFullRepaid = loan.status === LOAN_STATUS_ENUM.REPAID;
+            await this.notificationService.createAndSend(
                 loan.lenderId.toString(),
-                loan.status === LOAN_STATUS_ENUM.REPAID ? 'Khoản đầu tư đã được tất toán!' : 'Đã nhận được thanh toán một phần',
-                loan.status === LOAN_STATUS_ENUM.REPAID
-                    ? `Người vay đã thanh toán toàn bộ khoản vay ${loan.amountPaid} USDT.`
-                    : `Người vay vừa thanh toán ${dto.amount} USDT. Số dư nợ còn lại: ${loan.remainingAmount} USDT.`,
-                'TRANSACTION',
-                loan._id.toString()
+                isFullRepaid ? '✅ Khoản đầu tư đã được tất toán!' : '💳 Nhận được thanh toán một phần',
+                isFullRepaid
+                    ? `Người vay đã thanh toán toàn bộ ${loan.amountPaid} USDT. Vốn + lãi đã vào ví của bạn.`
+                    : `Người vay vừa thanh toán ${dto.amount} USDT. Dư nợ còn lại: ${loan.remainingAmount} USDT.`,
+                NotificationTypeEnum.LOAN_REPAID,
+                { loanId: loan._id.toString(), role: 'lender', screen: 'LoanDetail', transactionHash: dto.txHash },
+                loan._id.toString(),
             );
         }
+        // Thông báo cho borrower xác nhận đã trả thành công
+        await this.notificationService.createAndSend(
+            loan.borrowerId.toString(),
+            loan.status === LOAN_STATUS_ENUM.REPAID ? '🎉 Trả nợ hoàn tất!' : '✅ Đã ghi nhận thanh toán',
+            loan.status === LOAN_STATUS_ENUM.REPAID
+                ? 'Bạn đã hoàn tất toàn bộ khoản vay. Tài sản thế chấp sẽ được hoàn trả về ví của bạn.'
+                : `Đã ghi nhận thanh toán ${dto.amount} USDT. Dư nợ còn lại: ${loan.remainingAmount} USDT.`,
+            NotificationTypeEnum.LOAN_REPAID,
+            { loanId: loan._id.toString(), role: 'borrower', screen: 'LoanDetail', transactionHash: dto.txHash },
+            loan._id.toString(),
+        );
 
         this.logger.log(`✅ Loan repaid: ${loanId} - Amount: ${dto.amount} USDT - User: ${userId}`);
 
@@ -986,5 +1013,36 @@ export class LoanService {
             this.logger.error(`checkExpiredRequests error: ${error.message}`);
         }
         return expiredCount;
+    }
+
+    /**
+     * [TEST ONLY] Đặt dueDate và status của một loan để simulate các giai đoạn.
+     * daysOffset < 0 → dueDate trong quá khứ (simulate quá hạn).
+     */
+    async setLoanDueForTest(loanId: string, daysOffset: number, status?: string) {
+        const loan = await this.loanModel.findById(loanId);
+        if (!loan) throw new NotFoundException(`Loan ${loanId} không tồn tại`);
+
+        const now = new Date();
+        const newDueDate = new Date(now.getTime() + daysOffset * 24 * 3600 * 1000);
+
+        const update: any = { dueDate: newDueDate };
+        if (status && Object.values(LOAN_STATUS_ENUM).includes(status as LOAN_STATUS_ENUM)) {
+            update.status = status;
+        }
+
+        await this.loanModel.updateOne({ _id: loan._id }, { $set: update });
+
+        this.logger.warn(
+            `[TEST] Loan ${loanId} → dueDate=${newDueDate.toISOString()}, ` +
+            `status=${status || '(unchanged)'}`,
+        );
+
+        return {
+            loanId,
+            newDueDate,
+            status: status || loan.status,
+            daysOffset,
+        };
     }
 }

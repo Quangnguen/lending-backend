@@ -1,9 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { Cron } from '@nestjs/schedule';
+
 import { Notification, NotificationDocument } from './notification.schema';
+import { DeviceToken, DeviceTokenDocument } from './schemas/device-token.schema';
+import { NotificationTypeEnum } from './enums/notification-type.enum';
+import { NotificationGateway } from './notification.gateway';
+import { FirebasePushService } from './firebase-push.service';
 import { Loan, LoanDocument } from '@database/schemas/loan.model';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { User, UserDocument } from '@database/schemas/user.model';
 import { LOAN_STATUS_ENUM } from '@constant/p2p-lending.enum';
 
 @Injectable()
@@ -11,44 +17,187 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
   constructor(
-    @InjectModel(Notification.name) private notificationModel: Model<NotificationDocument>,
-    @InjectModel(Loan.name) private loanModel: Model<LoanDocument>,
+    @InjectModel(Notification.name)
+    private readonly notificationModel: Model<NotificationDocument>,
+
+    @InjectModel(DeviceToken.name)
+    private readonly deviceTokenModel: Model<DeviceTokenDocument>,
+
+    @InjectModel(Loan.name)
+    private readonly loanModel: Model<LoanDocument>,
+
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
+
+    private readonly gateway: NotificationGateway,
+    private readonly pushService: FirebasePushService,
   ) {}
 
-  async createNotification(
+  // ── Core: tạo notification + emit socket + push FCM ──────────────────────
+
+  async createAndSend(
     userId: string,
     title: string,
     message: string,
-    type: 'LOAN' | 'SYSTEM' | 'TRANSACTION' = 'SYSTEM',
+    type: NotificationTypeEnum,
+    metadata?: Record<string, any>,
     referenceId?: string,
-  ) {
-    const notification = new this.notificationModel({
+  ): Promise<NotificationDocument> {
+    const doc = await this.notificationModel.create({
       userId: new Types.ObjectId(userId),
       title,
       message,
       type,
+      metadata: metadata ?? {},
       referenceId: referenceId ? new Types.ObjectId(referenceId) : undefined,
     });
-    return notification.save();
+
+    // Realtime socket — không throw nếu lỗi
+    try {
+      this.gateway.sendToUser(userId, doc.toObject());
+      const unread = await this.countUnread(userId);
+      this.gateway.sendUnreadCount(userId, unread);
+    } catch (e) {
+      this.logger.warn(`Socket emit failed userId=${userId}: ${e.message}`);
+    }
+
+    // FCM push — không throw nếu lỗi
+    try {
+      await this.pushService.sendToUser(userId, { title, message, data: { type, referenceId: referenceId ?? '' } });
+    } catch (e) {
+      this.logger.warn(`FCM push failed userId=${userId}: ${e.message}`);
+    }
+
+    return doc;
   }
 
-  async getMyNotifications(userId: string, limit: number = 20, skip: number = 0) {
-    const notifications = await this.notificationModel
-      .find({
-        userId: new Types.ObjectId(userId),
-        $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
-      })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .exec();
+  // ── Loan-specific notification helpers ───────────────────────────────────
 
-    const unreadCount = await this.notificationModel.countDocuments({
-      userId: new Types.ObjectId(userId),
-      isRead: false,
-      $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+  async notifyLoanFunded(params: { borrowerId: string; lenderId: string; loanId: string; transactionHash?: string }) {
+    const { borrowerId, loanId, transactionHash } = params;
+    const meta = { loanId, transactionHash, role: 'borrower', screen: 'LoanDetail' };
+    await this.createAndSend(
+      borrowerId,
+      '💰 Khoản vay đã được cấp vốn',
+      'Khoản vay của bạn đã được cấp vốn thành công. Tiền USDT đã được chuyển vào ví của bạn.',
+      NotificationTypeEnum.LOAN_FUNDED,
+      meta,
+      loanId,
+    );
+  }
+
+  async notifyLoanRepaid(params: { borrowerId: string; lenderId: string; loanId: string; transactionHash?: string }) {
+    const { lenderId, loanId, transactionHash } = params;
+    const meta = { loanId, transactionHash, role: 'lender', screen: 'LoanDetail' };
+    await this.createAndSend(
+      lenderId,
+      '✅ Khoản vay đã được thanh toán',
+      'Người vay đã hoàn tất thanh toán khoản vay. Vốn + lãi đã được chuyển vào ví của bạn.',
+      NotificationTypeEnum.LOAN_REPAID,
+      meta,
+      loanId,
+    );
+  }
+
+  async notifyLoanDueSoon(params: { borrowerId: string; loanId: string; daysLeft: number; dueDate: Date }) {
+    const { borrowerId, loanId, daysLeft, dueDate } = params;
+
+    // Chống gửi trùng: kiểm tra đã có notification cùng loanId + type + daysLeft chưa
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const existing = await this.notificationModel.findOne({
+      userId: new Types.ObjectId(borrowerId),
+      'metadata.loanId': loanId,
+      'metadata.daysLeft': daysLeft,
+      type: NotificationTypeEnum.LOAN_DUE_SOON,
+      createdAt: { $gte: today },
+    });
+    if (existing) return;
+
+    const dueDateStr = dueDate.toLocaleDateString('vi-VN');
+    const title = daysLeft === 1
+      ? '🚨 Hạn trả nợ là ngày mai!'
+      : `⚠️ Còn ${daysLeft} ngày đến hạn trả nợ`;
+    const message = `Khoản vay của bạn sẽ đến hạn vào ${dueDateStr}. Vui lòng chuẩn bị đủ số dư USDT để tránh bị phạt lãi.`;
+
+    await this.createAndSend(borrowerId, title, message, NotificationTypeEnum.LOAN_DUE_SOON,
+      { loanId, daysLeft, dueDate: dueDate.toISOString(), screen: 'LoanDetail' }, loanId);
+  }
+
+  async notifyLoanLiquidated(params: { borrowerId: string; lenderId: string; loanId: string; transactionHash?: string }) {
+    const { borrowerId, lenderId, loanId, transactionHash } = params;
+    const message = 'Khoản vay đã bị thanh lý do quá hạn thanh toán. Tài sản thế chấp đã được xử lý.';
+    await Promise.all([
+      this.createAndSend(borrowerId, '🔴 Khoản vay đã bị thanh lý', message,
+        NotificationTypeEnum.LOAN_LIQUIDATED, { loanId, transactionHash, role: 'borrower', screen: 'LoanDetail' }, loanId),
+      this.createAndSend(lenderId, '🔴 Khoản vay đã bị thanh lý', message,
+        NotificationTypeEnum.LOAN_LIQUIDATED, { loanId, transactionHash, role: 'lender', screen: 'LoanDetail' }, loanId),
+    ]);
+  }
+
+  async sendAdminNotification(params: { targetUserIds?: string[]; title: string; message: string; metadata?: Record<string, any> }) {
+    const { targetUserIds, title, message, metadata } = params;
+
+    let userIds: string[];
+    if (!targetUserIds || targetUserIds.length === 0) {
+      const users = await this.userModel.find({}, '_id').lean();
+      userIds = users.map((u: any) => u._id.toString());
+      this.logger.log(`[AdminNotify] Gửi đến ALL: tìm thấy ${userIds.length} user(s)`);
+    } else {
+      userIds = targetUserIds;
+      this.logger.log(`[AdminNotify] Gửi đến TARGETED: ${userIds.length} user(s)`);
+    }
+
+    if (userIds.length === 0) {
+      this.logger.warn('[AdminNotify] Không có user nào để gửi');
+      return { sent: 0 };
+    }
+
+    const results = await Promise.allSettled(
+      userIds.map((uid) =>
+        this.notificationModel.create({
+          userId: new Types.ObjectId(uid),
+          title,
+          message,
+          type: NotificationTypeEnum.ADMIN_MESSAGE,
+          metadata: metadata ?? {},
+        })
+      ),
+    );
+
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+    const failed    = results.filter((r) => r.status === 'rejected').length;
+    this.logger.log(`[AdminNotify] Kết quả: ${succeeded} thành công, ${failed} thất bại`);
+
+    // Emit socket + unread count + FCM cho từng user
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        const doc = (r as any).value;
+        try { this.gateway.sendToUser(userIds[i], doc.toObject()); } catch {}
+        // Cập nhật badge chính xác từ DB (không dùng +1 vì có thể drift)
+        this.countUnread(userIds[i])
+          .then((count) => { try { this.gateway.sendUnreadCount(userIds[i], count); } catch {} })
+          .catch(() => {});
+        this.pushService.sendToUser(userIds[i], { title, message }).catch(() => {});
+      }
     });
 
+    return { sent: succeeded };
+  }
+
+  // ── CRUD ─────────────────────────────────────────────────────────────────
+
+  async getMyNotifications(userId: string, limit = 20, skip = 0) {
+    const notDeletedFilter = { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] };
+    const [notifications, unreadCount] = await Promise.all([
+      this.notificationModel
+        .find({ userId: new Types.ObjectId(userId), ...notDeletedFilter })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.countUnread(userId),
+    ]);
     return { notifications, unreadCount };
   }
 
@@ -61,59 +210,71 @@ export class NotificationService {
   }
 
   async markAllAsRead(userId: string) {
-    return this.notificationModel.updateMany(
+    await this.notificationModel.updateMany(
       { userId: new Types.ObjectId(userId), isRead: false },
       { isRead: true },
     );
+    this.gateway.sendUnreadCount(userId, 0);
+    return { success: true };
   }
 
-  // Cronjob chạy mỗi ngày lúc 8:00 sáng để nhắc nợ
+  async softDelete(userId: string, notificationId: string) {
+    return this.notificationModel.findOneAndUpdate(
+      { _id: new Types.ObjectId(notificationId), userId: new Types.ObjectId(userId) },
+      { deletedAt: new Date() },
+      { new: true },
+    );
+  }
+
+  async countUnread(userId: string): Promise<number> {
+    return this.notificationModel.countDocuments({
+      userId: new Types.ObjectId(userId),
+      isRead: false,
+      $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+    });
+  }
+
+  // Backward-compat dùng cho các service cũ
+  async createNotification(userId: string, title: string, message: string, type = 'SYSTEM', referenceId?: string) {
+    return this.createAndSend(userId, title, message, type as NotificationTypeEnum, {}, referenceId);
+  }
+
+  // ── Cron: nhắc nợ hàng ngày lúc 8:00 ────────────────────────────────────
+
   @Cron('0 8 * * *')
-  async handleCronCheckApproachingDeadlines() {
-    this.logger.debug('Running CronJob: Check Approaching Loan Deadlines');
+  async handleCronCheckApproachingDeadlines(): Promise<void> {
+    this.logger.debug('CronJob: Check approaching loan deadlines');
     const now = new Date();
 
-    const activeLoans = await this.loanModel
-      .find({
-        status: LOAN_STATUS_ENUM.ACTIVE,
-        $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
-      })
-      .exec();
+    const activeLoans = await this.loanModel.find({ status: LOAN_STATUS_ENUM.ACTIVE }).lean();
+    let sent = 0;
 
     for (const loan of activeLoans) {
-      if (!loan.dueDate) continue;
+      if (!loan.dueDate || !loan.borrowerId) continue;
 
       const dueDate = new Date(loan.dueDate);
-      const diffMs = dueDate.getTime() - now.getTime();
-      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      const diffDays = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-      if (diffDays === 3) {
-        await this.createNotification(
-          loan.borrowerId.toString(),
-          '⚠️ Nhắc nhở: Sắp đến hạn trả nợ',
-          `Khoản vay ${loan.principalAmount} USDT của bạn sẽ đến hạn sau 3 ngày nữa. Vui lòng chuẩn bị đủ số dư để thanh toán đúng hạn nhé!`,
-          'LOAN',
-          loan._id.toString(),
-        );
-      } else if (diffDays === 1) {
-        await this.createNotification(
-          loan.borrowerId.toString(),
-          '🚨 Chú ý: Hạn trả nợ là ngày mai!',
-          `Khoản vay ${loan.principalAmount} USDT của bạn sẽ đến hạn vào ngày mai. Hãy nhanh chóng thanh toán để không bị trừ điểm tín dụng và phạt lãi!`,
-          'LOAN',
-          loan._id.toString(),
-        );
+      if (diffDays === 3 || diffDays === 1) {
+        await this.notifyLoanDueSoon({
+          borrowerId: loan.borrowerId.toString(),
+          loanId: loan._id.toString(),
+          daysLeft: diffDays,
+          dueDate,
+        });
+        sent++;
       } else if (diffDays < 0) {
-        await this.createNotification(
-          loan.borrowerId.toString(),
-          '🔴 Cảnh báo: Khoản vay đã quá hạn!',
-          `Khoản vay ${loan.principalAmount} USDT của bạn đã quá hạn ${Math.abs(diffDays)} ngày. Nếu không thanh toán sớm, tài sản thế chấp sẽ tự động bị thanh lý!`,
-          'LOAN',
-          loan._id.toString(),
-        );
+        // Quá hạn — notify một lần/ngày (dùng dedup trong notifyLoanDueSoon)
+        await this.notifyLoanDueSoon({
+          borrowerId: loan.borrowerId.toString(),
+          loanId: loan._id.toString(),
+          daysLeft: diffDays,
+          dueDate,
+        });
+        sent++;
       }
     }
 
-    this.logger.debug(`CronJob done. Processed ${activeLoans.length} active loans.`);
+    this.logger.debug(`CronJob done. Checked ${activeLoans.length} loans, sent ${sent} notifications.`);
   }
 }

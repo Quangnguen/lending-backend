@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { Injectable, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -122,8 +123,9 @@ export class CreditScoringEngine {
 
         // 8. Tính loan limit
         const monthlyIncome = financials.income.monthlyAvgIncome;
-        // Chuyển VND → USDT (tỷ giá demo ~25,000 VND/USDT)
-        const monthlyIncomeUSDT = monthlyIncome / 25000;
+        // Chuyển VND → USDT theo tỷ giá thị trường (fallback 25,000 nếu fetch lỗi)
+        const usdtVnd = await this.getUsdtVndRate();
+        const monthlyIncomeUSDT = monthlyIncome / usdtVnd;
         const baseLimitUSDT = monthlyIncomeUSDT * maxLoanMultiplier;
         // Bonus 20% nếu có nhiều NH liên kết
         const connectionMultiplier = linkedBanks >= 2 ? 1.2 : (linkedBanks >= 1 ? 1.1 : 1.0);
@@ -229,15 +231,26 @@ export class CreditScoringEngine {
         const newScore = Math.max(0, latestScore.score - penalty);
         const { rating, collateralRatio, maxLoanMultiplier } = this.determineRating(newScore);
 
+        const newLoanLimit = Math.round(latestScore.loanLimit * (newScore / Math.max(latestScore.score, 1)));
+
         // Tạo record mới (không update record cũ để giữ history)
         const penalizedScore = await this.creditScoreModel.create({
             userId: new Types.ObjectId(userId),
             score: newScore,
             breakdown: latestScore.breakdown,
             rating,
-            loanLimit: Math.round(latestScore.loanLimit * (newScore / Math.max(latestScore.score, 1))),
+            loanLimit: newLoanLimit,
             calculatedAt: new Date(),
         });
+
+        // Đồng bộ User.creditScore (off-chain)
+        const userModel = this.creditScoreModel.db.model('User');
+        await userModel.findByIdAndUpdate(userId, { creditScore: newScore });
+
+        // Đồng bộ on-chain oracle (fire-and-forget — không block penalty nếu blockchain lỗi)
+        this.publishScoreToBlockchain(userId, newScore).catch(err =>
+            this.logger.warn(`[CreditEngine] Oracle sync failed after penalty: ${err.message}`)
+        );
 
         this.logger.warn(
             `[CreditEngine] PENALTY applied: User ${userId} | ` +
@@ -496,21 +509,24 @@ export class CreditScoringEngine {
         let totalPenalty = 0;
         const reasons: string[] = [];
 
-        // Platform penalties
+        // Platform penalties — tích lũy theo vòng đời khoản vay
+        // OVERDUE: chỉ phạt nếu vẫn đang ở trạng thái OVERDUE (chưa leo lên DEFAULTED)
         if (history.overdueLoans > 0) {
             const p = history.overdueLoans * 50;
             totalPenalty += p;
             reasons.push(`OVERDUE x${history.overdueLoans}: -${p}`);
         }
+        // DEFAULTED = đã qua OVERDUE rồi → phạt cả 2 giai đoạn (50+150=200 mỗi khoản)
         if (history.defaultedLoans > 0) {
-            const p = history.defaultedLoans * 150;
+            const p = history.defaultedLoans * 200;
             totalPenalty += p;
-            reasons.push(`DEFAULTED x${history.defaultedLoans}: -${p}`);
+            reasons.push(`DEFAULTED x${history.defaultedLoans}: -${p} (OVERDUE+DEFAULTED)`);
         }
+        // LIQUIDATED = đã qua OVERDUE+DEFAULTED → phạt cả 3 giai đoạn (50+150+200=400 mỗi khoản)
         if (history.liquidatedLoans > 0) {
-            const p = history.liquidatedLoans * 200;
+            const p = history.liquidatedLoans * 400;
             totalPenalty += p;
-            reasons.push(`LIQUIDATED x${history.liquidatedLoans}: -${p}`);
+            reasons.push(`LIQUIDATED x${history.liquidatedLoans}: -${p} (OVERDUE+DEFAULTED+LIQUIDATED)`);
         }
 
         // DTI penalty
@@ -529,6 +545,27 @@ export class CreditScoringEngine {
     // ==========================================
     // HELPERS
     // ==========================================
+
+    private ratesCache: { usdtVnd: number; updatedAt: number } | null = null;
+
+    private async getUsdtVndRate(): Promise<number> {
+        const TTL = 5 * 60 * 1000;
+        if (this.ratesCache && Date.now() - this.ratesCache.updatedAt < TTL) {
+            return this.ratesCache.usdtVnd;
+        }
+        try {
+            const res = await axios.get(
+                'https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=vnd',
+                { timeout: 4000 },
+            );
+            const rate = res.data?.tether?.vnd ?? 25000;
+            this.ratesCache = { usdtVnd: rate, updatedAt: Date.now() };
+            return rate;
+        } catch {
+            this.logger.warn('[CreditEngine] CoinGecko unavailable, using fallback rate 25,000 VND/USDT');
+            return this.ratesCache?.usdtVnd ?? 25000;
+        }
+    }
 
     private async getLoanHistory(userId: string): Promise<LoanHistoryStats> {
         const loans = await this.loanModel.find({
@@ -550,12 +587,13 @@ export class CreditScoringEngine {
         collateralRatio: number;
         maxLoanMultiplier: number;
     } {
-        if (score >= 800) return { rating: 'EXCELLENT', collateralRatio: 135, maxLoanMultiplier: 5 };
-        if (score >= 700) return { rating: 'VERY_GOOD', collateralRatio: 145, maxLoanMultiplier: 4 };
-        if (score >= 600) return { rating: 'GOOD', collateralRatio: 155, maxLoanMultiplier: 3 };
-        if (score >= 500) return { rating: 'FAIR', collateralRatio: 165, maxLoanMultiplier: 2 };
+        if (score >= 800) return { rating: 'EXCELLENT',  collateralRatio: 135, maxLoanMultiplier: 5 };
+        if (score >= 700) return { rating: 'VERY_GOOD',  collateralRatio: 145, maxLoanMultiplier: 4 };
+        if (score >= 600) return { rating: 'GOOD',       collateralRatio: 155, maxLoanMultiplier: 3 };
+        if (score >= 500) return { rating: 'FAIR',       collateralRatio: 165, maxLoanMultiplier: 2 };
         if (score >= 400) return { rating: 'BELOW_FAIR', collateralRatio: 175, maxLoanMultiplier: 1.5 };
-        return { rating: 'POOR', collateralRatio: 190, maxLoanMultiplier: 1 };
+        if (score >= 200) return { rating: 'POOR',       collateralRatio: 190, maxLoanMultiplier: 0 };
+        return { rating: 'BAD', collateralRatio: 190, maxLoanMultiplier: 0 };
     }
 
 

@@ -1,0 +1,12 @@
+export enum NotificationTypeEnum {
+  LOAN_FUNDED     = 'LOAN_FUNDED',
+  LOAN_REPAID     = 'LOAN_REPAID',
+  LOAN_DUE_SOON   = 'LOAN_DUE_SOON',
+  LOAN_LIQUIDATED = 'LOAN_LIQUIDATED',
+  LOAN_OVERDUE    = 'LOAN_OVERDUE',
+  ADMIN_MESSAGE   = 'ADMIN_MESSAGE',
+  // backward-compat
+  LOAN        = 'LOAN',
+  SYSTEM      = 'SYSTEM',
+  TRANSACTION = 'TRANSACTION',
+}

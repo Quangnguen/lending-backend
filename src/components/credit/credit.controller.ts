@@ -1,7 +1,33 @@
+import axios from 'axios';
 import { Controller, Get, Post, Param, Request, UseGuards, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { CreditService } from "./credit.service";
 import { CreditScoringEngine } from "./credit-scoring.engine";
+
+// Cache tỷ giá 5 phút — tránh gọi CoinGecko liên tục
+let ratesCache: { ethUsd: number; usdtVnd: number; updatedAt: number } | null = null;
+const RATES_TTL_MS = 5 * 60 * 1000;
+
+async function fetchLiveRates() {
+    if (ratesCache && Date.now() - ratesCache.updatedAt < RATES_TTL_MS) {
+        return ratesCache;
+    }
+    try {
+        const res = await axios.get(
+            'https://api.coingecko.com/api/v3/simple/price?ids=ethereum,tether&vs_currencies=usd,vnd',
+            { timeout: 5000 },
+        );
+        ratesCache = {
+            ethUsd: res.data.ethereum?.usd ?? 2000,
+            usdtVnd: res.data.tether?.vnd ?? 25000,
+            updatedAt: Date.now(),
+        };
+    } catch {
+        // Giữ cache cũ hoặc dùng fallback nếu CoinGecko lỗi
+        if (!ratesCache) ratesCache = { ethUsd: 2000, usdtVnd: 25000, updatedAt: Date.now() };
+    }
+    return ratesCache;
+}
 
 @ApiTags('Credit')
 @Controller('credit')
@@ -11,6 +37,18 @@ export class CreditController {
         private readonly creditService: CreditService,
         private readonly creditScoringEngine: CreditScoringEngine,
     ) { }
+
+    @Get('rates')
+    @ApiOperation({ summary: 'Tỷ giá thị trường: ETH/USD và USDT/VND (cache 5 phút từ CoinGecko)' })
+    async getRates() {
+        const rates = await fetchLiveRates();
+        return {
+            ethUsd: rates.ethUsd,
+            usdtVnd: rates.usdtVnd,
+            updatedAt: new Date(rates.updatedAt).toISOString(),
+            source: 'CoinGecko',
+        };
+    }
 
     @Get('score')
     @ApiOperation({ summary: 'Get latest credit score for the logged-in user' })

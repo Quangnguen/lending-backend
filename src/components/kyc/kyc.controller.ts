@@ -93,7 +93,14 @@ export class KycController {
     // 1. OCR nhận dạng (từ buffer trong RAM)
     const result = await this.localKycService.recognizeID(file.buffer, file.originalname);
 
-    // 2. Upload lên Cloudinary (private)
+    // 2. Nếu là mặt trước và OCR lấy được số CCCD → kiểm tra trùng NGAY
+    //    Làm trước upload Cloudinary để không lưu ảnh của người dùng bất hợp lệ
+    if (imageType === 'front' && userId && result.id && result.id.length >= 9) {
+      await this.kycService.checkDuplicateCCCD(result.id, userId);
+      this.logger.log(`[KYC Step 1] ✅ CCCD ${result.id} — no duplicate found`);
+    }
+
+    // 3. Upload lên Cloudinary (private)
     let imageUrl: string | null = null;
     if (userId) {
       try {
@@ -106,11 +113,10 @@ export class KycController {
         this.logger.log(`[KYC Step 1] ✅ Uploaded to Cloudinary: ${imageUrl}`);
       } catch (uploadErr) {
         this.logger.error(`[KYC Step 1] ❌ Cloudinary upload failed: ${uploadErr.message}`);
-        // Tiếp tục lưu OCR result dù upload ảnh thất bại
       }
     }
 
-    // 3. Lưu kết quả OCR + URL ảnh vào MongoDB
+    // 4. Lưu kết quả OCR + URL ảnh vào MongoDB
     if (userId) {
       await this.kycService.saveIDResult(userId, result, imageUrl, imageType);
       this.logger.log(`[KYC Step 1] ✅ ID result saved for user ${userId} (${imageType})`);
@@ -165,7 +171,12 @@ export class KycController {
     // 1. So khớp khuôn mặt (từ buffer trong RAM)
     const result = await this.localKycService.matchFaces(idImage.buffer, selfieImage.buffer);
 
-    // 2. Upload selfie lên Cloudinary (dù match hay không, để admin xem)
+    // 2. Tính perceptual hash của selfie (để phát hiện trùng mặt xuyên tài khoản)
+    const selfieHash = result.isMatch
+      ? await this.localKycService.computePerceptualHash(selfieImage.buffer)
+      : '';
+
+    // 3. Upload selfie lên Cloudinary (dù match hay không, để admin xem)
     let selfieUrl: string | null = null;
     if (userId) {
       try {
@@ -180,9 +191,9 @@ export class KycController {
       }
     }
 
-    // 3. Lưu kết quả face match + URL selfie
+    // 4. Lưu kết quả face match + URL selfie + selfie hash
     if (userId) {
-      await this.kycService.saveFaceMatchResult(userId, result.similarity, result.isMatch, selfieUrl);
+      await this.kycService.saveFaceMatchResult(userId, result.similarity, result.isMatch, selfieUrl, selfieHash);
       this.logger.log(`[KYC Step 2] Face match ${result.isMatch ? 'PASSED ✅' : 'FAILED ❌'} for user ${userId} (${result.similarity.toFixed(1)}%)`);
     }
 

@@ -13,10 +13,14 @@ import { RedisHealthService } from './redis-health.service';
       useFactory: async () => {
         const redisPort: number = Number(process.env.REDIS_PORT) || 6379;
         const redisHost: string = process.env.REDIS_HOST || 'localhost';
+        const redisPassword: string | undefined = process.env.REDIS_PASSWORD;
 
-        const keyvRedis = new KeyvRedis({
-          url: `redis://${redisHost}:${redisPort}`,
-        });
+        // redis://:password@host:port nếu có password, ngược lại dùng không auth
+        const redisUrl = redisPassword
+          ? `redis://:${redisPassword}@${redisHost}:${redisPort}`
+          : `redis://${redisHost}:${redisPort}`;
+
+        const keyvRedis = new KeyvRedis({ url: redisUrl });
 
         return {
           stores: [keyvRedis],

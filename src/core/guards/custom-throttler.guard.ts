@@ -27,9 +27,9 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
   }
 
   // Override the default tracking logic
-  protected getTracker(req: Record<string, any>): Promise<string> {
+  protected async getTracker(req: Record<string, any>): Promise<string> {
     // Use the user's ID for tracking if authenticated, else use the IP
-    return req.user?.id || req.ip;
+    return req.user?.id ?? req.ip ?? 'unknown';
   }
 
   // Customize the rate-limit based on user roles

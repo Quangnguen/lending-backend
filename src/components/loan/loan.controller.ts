@@ -3,11 +3,15 @@ import { LenderMarketplaceService } from "./lender-marketplace.service";
 import { DisbursementService } from "./disbursement.service";
 import { LiquidationService } from "./liquidation.service";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Request, HttpCode, HttpStatus } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Request, HttpCode, HttpStatus, UseGuards } from "@nestjs/common";
+import { RoleGuard } from "@core/guards/role.guard";
+import { Roles } from "@core/decorators/roles.decorator";
+import { ROLE_ENUM } from "@constant/p2p-lending.enum";
 import { CreateLoanRequestDto } from "./dto/create-loan-request.dto";
 import { FundLoanDto } from "./dto/fund-loan.dto";
 import { RepayLoanDto } from "./dto/repay-loan.dto";
 import { BlockchainService } from "../blockchain/blockchain.service";
+import { NotificationService } from "../notification/notification.service";
 
 @ApiTags('Loans')
 @ApiBearerAuth('access-token')
@@ -19,6 +23,7 @@ export class LoanController {
         private readonly marketplaceService: LenderMarketplaceService,
         private readonly disbursementService: DisbursementService,
         private readonly liquidationService: LiquidationService,
+        private readonly notificationService: NotificationService,
     ) { }
 
     // ========================================
@@ -192,10 +197,83 @@ export class LoanController {
     // === LIQUIDATION & DEBT (Bước 4) ===
     // ========================================
 
+    // ========================================
+    // === ADMIN — User-specific queries ===
+    // ========================================
+
+    @Get('admin/user/:userId/loans')
+    @UseGuards(RoleGuard)
+    @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+    @ApiOperation({ summary: '[Admin] Danh sách khoản vay của một user cụ thể' })
+    async getAdminUserLoans(@Param('userId') userId: string) {
+        return this.loanService.getMyLoans(userId);
+    }
+
+    @Get('admin/user/:userId/requests')
+    @UseGuards(RoleGuard)
+    @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+    @ApiOperation({ summary: '[Admin] Danh sách yêu cầu vay của một user cụ thể' })
+    async getAdminUserRequests(@Param('userId') userId: string) {
+        return this.loanService.getMyLoanRequests(userId);
+    }
+
+    @Get('admin/user/:userId/transactions')
+    @UseGuards(RoleGuard)
+    @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+    @ApiOperation({ summary: '[Admin] Lịch sử giao dịch của một user cụ thể' })
+    async getAdminUserTransactions(@Param('userId') userId: string) {
+        return this.loanService.getMyTransactions(userId);
+    }
+
     @Get('admin/overdue-report')
     @ApiOperation({ summary: '[Admin] Báo cáo khoản vay quá hạn / nợ xấu' })
     async getOverdueReport() {
         return this.liquidationService.getOverdueReport();
+    }
+
+    @Post('admin/test/trigger-due-notifications')
+    @UseGuards(RoleGuard)
+    @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+    @ApiOperation({ summary: '[TEST] Trigger thủ công cron nhắc sắp đến hạn' })
+    async triggerDueNotifications() {
+        await this.notificationService.handleCronCheckApproachingDeadlines();
+        return { success: true, message: 'Due-soon notification scan triggered' };
+    }
+
+    @Post('admin/test/trigger-liquidation-scan')
+    @UseGuards(RoleGuard)
+    @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+    @ApiOperation({ summary: '[TEST] Trigger thủ công cron quét quá hạn / thanh lý' })
+    async triggerLiquidationScan() {
+        await this.liquidationService.scanOverdueLoans();
+        return { success: true, message: 'Liquidation scan triggered' };
+    }
+
+    @Post('admin/test/set-loan-due/:loanId')
+    @UseGuards(RoleGuard)
+    @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+    @ApiOperation({ summary: '[TEST] Đặt dueDate & status của loan để test' })
+    async setLoanDueForTest(
+        @Param('loanId') loanId: string,
+        @Body() body: { daysOffset: number; status?: string },
+    ) {
+        return this.loanService.setLoanDueForTest(loanId, body.daysOffset, body.status);
+    }
+
+    @Post('admin/test/mint-debt-token/:loanId')
+    @UseGuards(RoleGuard)
+    @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
+    @ApiOperation({ summary: '[TEST] Mint DebtToken trực tiếp cho loan (bỏ qua kiểm tra ngày)' })
+    async mintDebtTokenDirect(@Param('loanId') loanId: string) {
+        const loan = await this.loanService.getLoanDetail(loanId);
+        const txHash = await this.liquidationService.mintDebtTokenOnChain(loan);
+        return {
+            success: !!txHash,
+            txHash: txHash ?? null,
+            message: txHash
+                ? `DebtToken đã mint! Tx: ${txHash}`
+                : 'Mint thất bại hoặc DebtToken contract chưa config (xem log backend)',
+        };
     }
 
     @Get('debt/check/:walletAddress')

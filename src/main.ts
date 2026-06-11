@@ -11,12 +11,16 @@ import { SwaggerTheme, SwaggerThemeNameEnum } from 'swagger-themes';
 
 import { AppModule } from './app.module';
 import { isDevMode } from '@utils/common';
+import { validateEncryptionKey } from '@core/utils/encryption.util';
 import { AllConfigType } from '@config/config.type';
 import { SortQueryPipe } from '@core/pipe/sort-query.pipe';
 import { FilterQueryPipe } from '@core/pipe/filter-query.pipe';
 import { BusinessExceptionFilter } from '@core/exception-filter/business-exception.filter';
 
 async function bootstrap() {
+  // STT-5 FIX: Kiểm tra encryption key hợp lệ trước khi khởi động
+  validateEncryptionKey();
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const configService = app.get(ConfigService<AllConfigType>);
