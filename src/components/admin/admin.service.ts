@@ -88,8 +88,8 @@ export class AdminService {
     return {
       totalToday: todayActions.length,
       loginCount: byAction['LOGIN'] || 0,
-      approvalCount: (byAction['APPROVE_KYC'] || 0) + (byAction['APPROVE_LOAN'] || 0),
-      rejectionCount: (byAction['REJECT_KYC'] || 0) + (byAction['REJECT_LOAN'] || 0),
+      approvalCount: byAction['APPROVE_LOAN'] || 0,
+      rejectionCount: byAction['REJECT_LOAN'] || 0,
       settingsChangeCount: byAction['UPDATE_SETTINGS'] || 0,
       byAction,
     };
@@ -98,12 +98,11 @@ export class AdminService {
   // ── DASHBOARD ALERTS ────────────────────────────────────────────────────────
 
   async getDashboardAlerts() {
-    const [overdueCount, defaultedCount, pendingLoanCount, pendingKYCCount] =
+    const [overdueCount, defaultedCount, pendingLoanCount] =
       await Promise.all([
         this.loanModel.countDocuments({ status: LOAN_STATUS_ENUM.OVERDUE }),
         this.loanModel.countDocuments({ status: LOAN_STATUS_ENUM.DEFAULTED }),
         this.loanRequestModel.countDocuments({ status: LOAN_REQUEST_STATUS_ENUM.PENDING }),
-        this.userModel.countDocuments({ kycStatus: 'pending' }),
       ]);
 
     const alerts: any[] = [];
@@ -124,15 +123,6 @@ export class AdminService {
         count: defaultedCount,
         message: `${defaultedCount} khoản vay vỡ nợ cần xử lý thanh lý`,
         link: '/admin/loans?status=defaulted',
-      });
-    }
-    if (pendingKYCCount > 0) {
-      alerts.push({
-        type: 'PENDING_KYC',
-        severity: 'MEDIUM',
-        count: pendingKYCCount,
-        message: `${pendingKYCCount} hồ sơ KYC đang chờ xét duyệt`,
-        link: '/admin/cases?tab=kyc',
       });
     }
     if (pendingLoanCount > 0) {
@@ -541,15 +531,7 @@ export class AdminService {
     const actions = await this.adminActionModel
       .find({ adminId: new Types.ObjectId(verifierId) })
       .lean();
-    const approved = actions.filter(a => a.actionType === 'APPROVE_KYC').length;
-    const rejected = actions.filter(a => a.actionType === 'REJECT_KYC').length;
-    const total = approved + rejected;
     return {
-      totalReviewed: total,
-      approved,
-      rejected,
-      approvalRate: total > 0 ? Math.round((approved / total) * 1000) / 10 : 0,
-      pendingInQueue: 0,
       totalActions: actions.length,
     };
   }
