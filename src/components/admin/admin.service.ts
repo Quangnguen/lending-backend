@@ -1,15 +1,35 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 
-import { AdminAction, AdminActionDocument } from '@database/schemas/admin-action.model';
-import { SystemConfig, SystemConfigDocument } from '@database/schemas/system-config.model';
+import {
+  AdminAction,
+  AdminActionDocument,
+} from '@database/schemas/admin-action.model';
+import {
+  SystemConfig,
+  SystemConfigDocument,
+} from '@database/schemas/system-config.model';
 import { User, UserDocument } from '@database/schemas/user.model';
-import { LoanRequest, LoanRequestDocument } from '@database/schemas/bank-request.model';
+import {
+  LoanRequest,
+  LoanRequestDocument,
+} from '@database/schemas/bank-request.model';
 import { Loan, LoanDocument } from '@database/schemas/loan.model';
-import { LoanRepayment, LoanRepaymentDocument } from '@database/schemas/loan-repayment.model';
-import { Notification, NotificationDocument } from '../notification/notification.schema';
+import {
+  LoanRepayment,
+  LoanRepaymentDocument,
+} from '@database/schemas/loan-repayment.model';
+import {
+  Notification,
+  NotificationDocument,
+} from '../notification/notification.schema';
 import {
   ADMIN_TARGET_TYPE_ENUM,
   ROLE_ENUM,
@@ -25,13 +45,18 @@ export class AdminService {
   private readonly logger = new Logger(AdminService.name);
 
   constructor(
-    @InjectModel(AdminAction.name) private adminActionModel: Model<AdminActionDocument>,
-    @InjectModel(SystemConfig.name) private systemConfigModel: Model<SystemConfigDocument>,
+    @InjectModel(AdminAction.name)
+    private adminActionModel: Model<AdminActionDocument>,
+    @InjectModel(SystemConfig.name)
+    private systemConfigModel: Model<SystemConfigDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
-    @InjectModel(LoanRequest.name) private loanRequestModel: Model<LoanRequestDocument>,
+    @InjectModel(LoanRequest.name)
+    private loanRequestModel: Model<LoanRequestDocument>,
     @InjectModel(Loan.name) private loanModel: Model<LoanDocument>,
-    @InjectModel(LoanRepayment.name) private loanRepaymentModel: Model<LoanRepaymentDocument>,
-    @InjectModel(Notification.name) private notificationModel: Model<NotificationDocument>,
+    @InjectModel(LoanRepayment.name)
+    private loanRepaymentModel: Model<LoanRepaymentDocument>,
+    @InjectModel(Notification.name)
+    private notificationModel: Model<NotificationDocument>,
   ) {}
 
   // ── AUDIT LOGS ──────────────────────────────────────────────────────────────
@@ -82,7 +107,7 @@ export class AdminService {
       .find({ createdAt: { $gte: startOfDay } })
       .lean();
     const byAction: Record<string, number> = {};
-    todayActions.forEach(a => {
+    todayActions.forEach((a) => {
       byAction[a.actionType] = (byAction[a.actionType] || 0) + 1;
     });
     return {
@@ -98,12 +123,13 @@ export class AdminService {
   // ── DASHBOARD ALERTS ────────────────────────────────────────────────────────
 
   async getDashboardAlerts() {
-    const [overdueCount, defaultedCount, pendingLoanCount] =
-      await Promise.all([
-        this.loanModel.countDocuments({ status: LOAN_STATUS_ENUM.OVERDUE }),
-        this.loanModel.countDocuments({ status: LOAN_STATUS_ENUM.DEFAULTED }),
-        this.loanRequestModel.countDocuments({ status: LOAN_REQUEST_STATUS_ENUM.PENDING }),
-      ]);
+    const [overdueCount, defaultedCount, pendingLoanCount] = await Promise.all([
+      this.loanModel.countDocuments({ status: LOAN_STATUS_ENUM.OVERDUE }),
+      this.loanModel.countDocuments({ status: LOAN_STATUS_ENUM.DEFAULTED }),
+      this.loanRequestModel.countDocuments({
+        status: LOAN_REQUEST_STATUS_ENUM.PENDING,
+      }),
+    ]);
 
     const alerts: any[] = [];
 
@@ -143,7 +169,10 @@ export class AdminService {
   async getSystemSettings() {
     const configs = await this.systemConfigModel.find().lean();
     const result: Record<string, Record<string, any>> = {
-      lending: {}, fees: {}, risk: {}, integrations: {},
+      lending: {},
+      fees: {},
+      risk: {},
+      integrations: {},
     };
 
     // Giá trị mặc định
@@ -178,7 +207,7 @@ export class AdminService {
     });
 
     // Override với giá trị từ DB
-    configs.forEach(cfg => {
+    configs.forEach((cfg) => {
       const dotIdx = cfg.key.indexOf('.');
       if (dotIdx === -1) return;
       const cat = cfg.key.substring(0, dotIdx);
@@ -189,24 +218,35 @@ export class AdminService {
         if (cfg.valueType === 'number') parsed = parseFloat(cfg.value);
         else if (cfg.valueType === 'boolean') parsed = cfg.value === 'true';
         else if (cfg.valueType === 'json') parsed = JSON.parse(cfg.value);
-      } catch { parsed = cfg.value; }
+      } catch {
+        parsed = cfg.value;
+      }
       result[cat][field] = parsed;
     });
 
     return result;
   }
 
-  async updateSystemSettings(adminId: string, dto: UpdateSettingsDto, ipAddress?: string) {
+  async updateSystemSettings(
+    adminId: string,
+    dto: UpdateSettingsDto,
+    ipAddress?: string,
+  ) {
     const updated: string[] = [];
 
     for (const [field, val] of Object.entries(dto.changes)) {
       const key = `${dto.category}.${field}`;
       const oldConfig = await this.systemConfigModel.findOne({ key }).lean();
-      const valueStr = typeof val === 'object' ? JSON.stringify(val) : String(val);
+      const valueStr =
+        typeof val === 'object' ? JSON.stringify(val) : String(val);
       const valueType =
-        typeof val === 'number' ? 'number' :
-        typeof val === 'boolean' ? 'boolean' :
-        typeof val === 'object' ? 'json' : 'string';
+        typeof val === 'number'
+          ? 'number'
+          : typeof val === 'boolean'
+            ? 'boolean'
+            : typeof val === 'object'
+              ? 'json'
+              : 'string';
 
       await this.systemConfigModel.findOneAndUpdate(
         { key },
@@ -233,7 +273,9 @@ export class AdminService {
       updated.push(field);
     }
 
-    this.logger.log(`[Admin] Settings updated by ${adminId}: ${updated.join(', ')}`);
+    this.logger.log(
+      `[Admin] Settings updated by ${adminId}: ${updated.join(', ')}`,
+    );
     return { success: true, updated, effectiveFrom: new Date() };
   }
 
@@ -292,16 +334,28 @@ export class AdminService {
     ]);
 
     const stats: Record<string, number> = {
-      total: 0, pending: 0, funded: 0, expired: 0, cancelled: 0, rejected: 0,
+      total: 0,
+      pending: 0,
+      funded: 0,
+      expired: 0,
+      cancelled: 0,
+      rejected: 0,
     };
-    statsArr.forEach(s => {
-      if (s._id) { stats[s._id] = s.count; stats.total += s.count; }
+    statsArr.forEach((s) => {
+      if (s._id) {
+        stats[s._id] = s.count;
+        stats.total += s.count;
+      }
     });
 
     return { data, total, page, totalPages: Math.ceil(total / limit), stats };
   }
 
-  async cancelLoanRequestByAdmin(adminId: string, requestId: string, reason: string) {
+  async cancelLoanRequestByAdmin(
+    adminId: string,
+    requestId: string,
+    reason: string,
+  ) {
     const req = await this.loanRequestModel.findById(requestId);
     if (!req) throw new NotFoundException('Không tìm thấy yêu cầu vay');
     const cancellableStatuses = [
@@ -327,7 +381,11 @@ export class AdminService {
       reason,
     });
 
-    return { success: true, requestId, status: LOAN_REQUEST_STATUS_ENUM.CANCELLED };
+    return {
+      success: true,
+      requestId,
+      status: LOAN_REQUEST_STATUS_ENUM.CANCELLED,
+    };
   }
 
   // ── ADMIN LOANS ─────────────────────────────────────────────────────────────
@@ -364,10 +422,18 @@ export class AdminService {
     ]);
 
     const stats: Record<string, number> = {
-      total: 0, active: 0, repaid: 0, overdue: 0, defaulted: 0, liquidated: 0,
+      total: 0,
+      active: 0,
+      repaid: 0,
+      overdue: 0,
+      defaulted: 0,
+      liquidated: 0,
     };
-    statsArr.forEach(s => {
-      if (s._id) { stats[s._id] = s.count; stats.total += s.count; }
+    statsArr.forEach((s) => {
+      if (s._id) {
+        stats[s._id] = s.count;
+        stats.total += s.count;
+      }
     });
 
     return { data, total, page, totalPages: Math.ceil(total / limit), stats };
@@ -376,7 +442,10 @@ export class AdminService {
   async getAdminLoanDetail(loanId: string) {
     const loan = await this.loanModel
       .findById(loanId)
-      .populate('borrowerId', 'fullName email walletAddress creditScore reputationScore kycStatus')
+      .populate(
+        'borrowerId',
+        'fullName email walletAddress creditScore reputationScore kycStatus',
+      )
       .populate('lenderId', 'fullName email walletAddress')
       .lean();
     if (!loan) throw new NotFoundException('Không tìm thấy khoản vay');
@@ -393,13 +462,20 @@ export class AdminService {
 
   async getCollateralAtRisk() {
     const loans = await this.loanModel
-      .find({ status: { $in: [LOAN_STATUS_ENUM.OVERDUE, LOAN_STATUS_ENUM.DEFAULTED] } })
+      .find({
+        status: { $in: [LOAN_STATUS_ENUM.OVERDUE, LOAN_STATUS_ENUM.DEFAULTED] },
+      })
       .populate('borrowerId', 'fullName email walletAddress')
       .lean();
 
-    const data = loans.map(loan => {
+    const data = loans.map((loan) => {
       const daysOverdue = loan.dueDate
-        ? Math.max(0, Math.floor((Date.now() - new Date(loan.dueDate).getTime()) / 86400000))
+        ? Math.max(
+            0,
+            Math.floor(
+              (Date.now() - new Date(loan.dueDate).getTime()) / 86400000,
+            ),
+          )
         : 0;
       return {
         loanId: loan._id,
@@ -417,7 +493,10 @@ export class AdminService {
       data,
       summary: {
         totalAtRisk: data.length,
-        totalPrincipalAtRisk: data.reduce((sum, l) => sum + (Number(l.principalAmount) || 0), 0),
+        totalPrincipalAtRisk: data.reduce(
+          (sum, l) => sum + (Number(l.principalAmount) || 0),
+          0,
+        ),
       },
     };
   }
@@ -439,29 +518,35 @@ export class AdminService {
 
     if (dto.targetGroup === 'ALL') {
       const users = await this.userModel.find({}, '_id').lean();
-      userIds = users.map(u => u._id.toString());
+      userIds = users.map((u) => u._id.toString());
     } else if (dto.targetGroup === 'BORROWERS') {
       const ids = await this.loanRequestModel.distinct('borrowerId');
-      userIds = ids.map(id => id.toString());
+      userIds = ids.map((id) => id.toString());
     } else if (dto.targetGroup === 'LENDERS') {
-      const ids = await this.loanModel.distinct('lenderId', { lenderId: { $ne: null } });
-      userIds = ids.map(id => id.toString());
+      const ids = await this.loanModel.distinct('lenderId', {
+        lenderId: { $ne: null },
+      });
+      userIds = ids.map((id) => id.toString());
     } else if (dto.targetGroup === 'OVERDUE_BORROWERS') {
-      const ids = await this.loanModel.distinct('borrowerId', { status: LOAN_STATUS_ENUM.OVERDUE });
-      userIds = ids.map(id => id.toString());
+      const ids = await this.loanModel.distinct('borrowerId', {
+        status: LOAN_STATUS_ENUM.OVERDUE,
+      });
+      userIds = ids.map((id) => id.toString());
     }
 
     userIds = [...new Set(userIds.filter(Boolean))];
 
     if (userIds.length > 0) {
-      const notifications = userIds.map(userId => ({
+      const notifications = userIds.map((userId) => ({
         userId: new Types.ObjectId(userId),
         title: dto.title,
         message: dto.message,
         type: dto.type || 'SYSTEM',
         isRead: false,
       }));
-      await this.notificationModel.insertMany(notifications, { ordered: false });
+      await this.notificationModel.insertMany(notifications, {
+        ordered: false,
+      });
     }
 
     await this.adminActionModel.create({
@@ -475,7 +560,9 @@ export class AdminService {
       },
     });
 
-    this.logger.log(`[Admin] Broadcast "${dto.title}" → ${userIds.length} users by ${adminId}`);
+    this.logger.log(
+      `[Admin] Broadcast "${dto.title}" → ${userIds.length} users by ${adminId}`,
+    );
     return { success: true, recipientCount: userIds.length };
   }
 
@@ -489,14 +576,19 @@ export class AdminService {
         .skip(skip)
         .limit(limit)
         .lean(),
-      this.adminActionModel.countDocuments({ actionType: 'BROADCAST_NOTIFICATION' }),
+      this.adminActionModel.countDocuments({
+        actionType: 'BROADCAST_NOTIFICATION',
+      }),
     ]);
     return { data, total };
   }
 
   // ── VERIFIERS ────────────────────────────────────────────────────────────────
 
-  async createVerifier(adminId: string, dto: { fullName: string; email: string; password: string }) {
+  async createVerifier(
+    adminId: string,
+    dto: { fullName: string; email: string; password: string },
+  ) {
     const existing = await this.userModel.findOne({ email: dto.email }).lean();
     if (existing) throw new BadRequestException('Email này đã được sử dụng');
 

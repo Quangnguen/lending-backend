@@ -9,9 +9,6 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 
 import {
-  AUTH_CONST,
-  KEY_PASSWORD_RESET,
-  PASSWORD_RESET_EXPIRES,
   KEY_FORGOT_OTP,
   FORGOT_OTP_EXPIRES,
   KEY_OTP_ATTEMPTS,
@@ -19,7 +16,6 @@ import {
   MAX_OTP_ATTEMPTS,
   OTP_LOCKOUT_TTL,
 } from './auth.constant';
-import { SALT_ROUNDS_PASSWORD } from '@components/user/user.constant';
 import {
   ROLE_ENUM,
   GENDER_ENUM,
@@ -75,7 +71,7 @@ export class AuthService {
 
     @Inject('UserSessionRepositoryInterface')
     private readonly userSessionRepository: UserSessionRepositoryInterface,
-  ) { }
+  ) {}
 
   async register(request: RegisterUserRequestDto) {
     const { email, phoneNumber } = request;
@@ -151,7 +147,11 @@ export class AuthService {
       );
     }
 
-    if (!user.isVerified && user.role !== ROLE_ENUM.ADMIN && user.role !== ROLE_ENUM.SUPER_ADMIN) {
+    if (
+      !user.isVerified &&
+      user.role !== ROLE_ENUM.ADMIN &&
+      user.role !== ROLE_ENUM.SUPER_ADMIN
+    ) {
       throw new BusinessException(
         this.i18n.translate('error.EMAIL_NOT_VERIFIED'),
         ResponseCodeEnum.BAD_REQUEST,
@@ -184,7 +184,9 @@ export class AuthService {
     // Bypass OTP cho đăng nhập từ Admin Portal (deviceType: web)
     // Admin portal đã có bảo vệ riêng qua NextAuth session
     if (deviceType === DEVICE_TYPE_ENUM.WEB) {
-      this.logger.log(`Admin Portal bypass OTP for: ${email} (role: ${user.role})`);
+      this.logger.log(
+        `Admin Portal bypass OTP for: ${email} (role: ${user.role})`,
+      );
       return await this.buildDataLoginSuccess(user, {
         deviceId,
         deviceName,
@@ -285,7 +287,10 @@ export class AuthService {
       );
     }
 
-    await this.userRepository.updateWalletAddress(user._id.toString(), walletAddress);
+    await this.userRepository.updateWalletAddress(
+      user._id.toString(),
+      walletAddress,
+    );
     this.logger.log(`Wallet updated for user ${user.email}: ${walletAddress}`);
 
     return new ResponseBuilder({ walletAddress })
@@ -452,7 +457,9 @@ export class AuthService {
         );
       } else if (deviceId) {
         await this.userSessionRepository.deactivateSession(user._id, deviceId);
-        this.logger.log(`User ${user.email} logged out from device: ${deviceId}`);
+        this.logger.log(
+          `User ${user.email} logged out from device: ${deviceId}`,
+        );
       } else {
         this.logger.log(`User ${user.email} logged out`);
       }
@@ -461,7 +468,9 @@ export class AuthService {
       // Mọi request tiếp theo dùng token này sẽ bị AuthenGuard từ chối.
       if (accessToken) {
         try {
-          const decoded = this.jwtService.decode(accessToken) as { exp?: number } | null;
+          const decoded = this.jwtService.decode(accessToken) as {
+            exp?: number;
+          } | null;
           const now = Math.floor(Date.now() / 1000);
           const remainingSeconds = decoded?.exp ? decoded.exp - now : 0;
           if (remainingSeconds > 0) {
@@ -821,7 +830,7 @@ export class AuthService {
     const attemptsKey = `${KEY_OTP_ATTEMPTS}:${scope}:${email}`;
     const lockKey = `${KEY_OTP_LOCKED}:${scope}:${email}`;
 
-    const current = await this.cacheManager.get<number>(attemptsKey) ?? 0;
+    const current = (await this.cacheManager.get<number>(attemptsKey)) ?? 0;
     const next = current + 1;
 
     if (next >= MAX_OTP_ATTEMPTS) {
@@ -848,10 +857,16 @@ export class AuthService {
         sessions
           .filter((s) => s.isActive && s.accessToken)
           .map(async (s) => {
-            const decoded = this.jwtService.decode(s.accessToken) as { exp?: number } | null;
+            const decoded = this.jwtService.decode(s.accessToken) as {
+              exp?: number;
+            } | null;
             const remaining = decoded?.exp ? decoded.exp - now : 0;
             if (remaining > 0) {
-              await this.cacheManager.set(`bl:${s.accessToken}`, '1', remaining * 1000);
+              await this.cacheManager.set(
+                `bl:${s.accessToken}`,
+                '1',
+                remaining * 1000,
+              );
             }
           }),
       );

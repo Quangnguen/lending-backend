@@ -1,13 +1,21 @@
-import { IsString, IsNotEmpty, IsIn, IsOptional, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsIn,
+  IsOptional,
+  IsDateString,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class BroadcastNotificationDto {
   @ApiProperty({ description: 'Tiêu đề thông báo' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   title: string;
 
   @ApiProperty({ description: 'Nội dung thông báo' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   message: string;
 
   @ApiProperty({
@@ -22,10 +30,12 @@ export class BroadcastNotificationDto {
     enum: ['LOAN', 'SYSTEM', 'TRANSACTION'],
     default: 'SYSTEM',
   })
-  @IsOptional() @IsIn(['LOAN', 'SYSTEM', 'TRANSACTION'])
+  @IsOptional()
+  @IsIn(['LOAN', 'SYSTEM', 'TRANSACTION'])
   type?: 'LOAN' | 'SYSTEM' | 'TRANSACTION';
 
   @ApiPropertyOptional({ description: 'Thời điểm gửi (null = gửi ngay)' })
-  @IsOptional() @IsDateString()
+  @IsOptional()
+  @IsDateString()
   scheduledAt?: string;
 }

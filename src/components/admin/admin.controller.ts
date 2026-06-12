@@ -12,7 +12,13 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiParam,
+} from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { BroadcastNotificationDto } from './dto/broadcast-notification.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
@@ -82,7 +88,10 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.adminService.getSettingsHistory(Number(page) || 1, Number(limit) || 20);
+    return this.adminService.getSettingsHistory(
+      Number(page) || 1,
+      Number(limit) || 20,
+    );
   }
 
   // ── LOAN REQUESTS ────────────────────────────────────────────────────────────
@@ -108,9 +117,14 @@ export class AdminController {
     @Param('id') id: string,
     @Body('reason') reason: string,
   ) {
-    if (!reason?.trim()) throw new BadRequestException('Vui lòng nhập lý do hủy');
+    if (!reason?.trim())
+      throw new BadRequestException('Vui lòng nhập lý do hủy');
     const adminId = req.user?._id?.toString() || req.user?.id;
-    return this.adminService.cancelLoanRequestByAdmin(adminId, id, reason.trim());
+    return this.adminService.cancelLoanRequestByAdmin(
+      adminId,
+      id,
+      reason.trim(),
+    );
   }
 
   // ── LOANS ────────────────────────────────────────────────────────────────────
@@ -149,7 +163,10 @@ export class AdminController {
   @Post('notifications/broadcast')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] Gửi thông báo hàng loạt' })
-  async broadcastNotification(@Request() req, @Body() dto: BroadcastNotificationDto) {
+  async broadcastNotification(
+    @Request() req,
+    @Body() dto: BroadcastNotificationDto,
+  ) {
     const adminId = req.user?._id?.toString() || req.user?.id;
     return this.adminService.broadcastNotification(adminId, dto);
   }
@@ -162,7 +179,10 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.adminService.getBroadcasts(Number(page) || 1, Number(limit) || 20);
+    return this.adminService.getBroadcasts(
+      Number(page) || 1,
+      Number(limit) || 20,
+    );
   }
 
   // ── VERIFIERS ────────────────────────────────────────────────────────────────

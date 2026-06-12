@@ -9,7 +9,8 @@ import validateConfig from '@utils/validate-config';
 class EnvironmentVariablesValidator {
   @IsString()
   @MinLength(32, {
-    message: 'AUTH_ACCESS_SECRET phải ít nhất 32 ký tự. Dùng: openssl rand -hex 32',
+    message:
+      'AUTH_ACCESS_SECRET phải ít nhất 32 ký tự. Dùng: openssl rand -hex 32',
   })
   AUTH_ACCESS_SECRET: string;
 
@@ -18,7 +19,8 @@ class EnvironmentVariablesValidator {
 
   @IsString()
   @MinLength(32, {
-    message: 'AUTH_REFRESH_SECRET phải ít nhất 32 ký tự. Dùng: openssl rand -hex 32',
+    message:
+      'AUTH_REFRESH_SECRET phải ít nhất 32 ký tự. Dùng: openssl rand -hex 32',
   })
   AUTH_REFRESH_SECRET: string;
 
@@ -33,14 +35,21 @@ class EnvironmentVariablesValidator {
 }
 
 // STT-1 FIX: Danh sách secret cực yếu — throw ngay khi khởi động nếu gặp
-const INSECURE_SECRETS = new Set(['secret', 'refresh', '2fa', 'password', '123456', 'changeme']);
+const INSECURE_SECRETS = new Set([
+  'secret',
+  'refresh',
+  '2fa',
+  'password',
+  '123456',
+  'changeme',
+]);
 
 const assertSecretStrong = (name: string, value: string | undefined): void => {
   if (!value) return; // Đã được bắt bởi @IsString() ở trên
   if (INSECURE_SECRETS.has(value.toLowerCase())) {
     throw new Error(
       `[SECURITY] ${name} đang dùng giá trị cực yếu ("${value}"). ` +
-      `Thay bằng chuỗi ngẫu nhiên: openssl rand -hex 32`,
+        `Thay bằng chuỗi ngẫu nhiên: openssl rand -hex 32`,
     );
   }
 };

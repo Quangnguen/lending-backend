@@ -7,13 +7,16 @@ const ALGORITHM = 'aes-256-gcm';
 const FALLBACK_KEY = 'vovancovan-32-byte-secret-key-12';
 
 const getSecretKey = (): Buffer => {
-  const raw = process.env.BANK_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY || FALLBACK_KEY;
+  const raw =
+    process.env.BANK_ENCRYPTION_KEY ||
+    process.env.ENCRYPTION_KEY ||
+    FALLBACK_KEY;
 
   // STT-5 FIX: Cảnh báo khi đang dùng fallback key (key ai cũng biết vì nằm trong source)
   if (raw === FALLBACK_KEY) {
     console.warn(
       '[SECURITY] ⚠️  Đang dùng FALLBACK encryption key. ' +
-      'Hãy đặt BANK_ENCRYPTION_KEY trong .env trước khi deploy!',
+        'Hãy đặt BANK_ENCRYPTION_KEY trong .env trước khi deploy!',
     );
   }
 
@@ -132,7 +135,7 @@ export const validateEncryptionKey = (): void => {
   if (isProduction && !key) {
     throw new Error(
       '[SECURITY] BANK_ENCRYPTION_KEY chưa được đặt trong biến môi trường. ' +
-      'Không thể khởi động ở môi trường production mà không có encryption key.',
+        'Không thể khởi động ở môi trường production mà không có encryption key.',
     );
   }
 

@@ -4,13 +4,28 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 
-import { AdminAction, AdminActionSchema } from '@database/schemas/admin-action.model';
-import { SystemConfig, SystemConfigSchema } from '@database/schemas/system-config.model';
+import {
+  AdminAction,
+  AdminActionSchema,
+} from '@database/schemas/admin-action.model';
+import {
+  SystemConfig,
+  SystemConfigSchema,
+} from '@database/schemas/system-config.model';
 import { User, UserSchema } from '@database/schemas/user.model';
-import { LoanRequest, LoanRequestSchema } from '@database/schemas/bank-request.model';
+import {
+  LoanRequest,
+  LoanRequestSchema,
+} from '@database/schemas/bank-request.model';
 import { Loan, LoanSchema } from '@database/schemas/loan.model';
-import { LoanRepayment, LoanRepaymentSchema } from '@database/schemas/loan-repayment.model';
-import { Notification, NotificationSchema } from '../notification/notification.schema';
+import {
+  LoanRepayment,
+  LoanRepaymentSchema,
+} from '@database/schemas/loan-repayment.model';
+import {
+  Notification,
+  NotificationSchema,
+} from '../notification/notification.schema';
 
 @Module({
   imports: [

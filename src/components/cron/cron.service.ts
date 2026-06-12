@@ -26,7 +26,9 @@ export class CronService {
     this.logger.log('🔄 [Cron] Bắt đầu đồng bộ blockchain...');
     try {
       const result = await this.blockchainService.syncAllActiveLoans();
-      this.logger.log(`🔄 [Cron] Đồng bộ hoàn tất - Synced: ${result.synced}, Errors: ${result.errors}`);
+      this.logger.log(
+        `🔄 [Cron] Đồng bộ hoàn tất - Synced: ${result.synced}, Errors: ${result.errors}`,
+      );
     } catch (error) {
       this.logger.error(`❌ [Cron] Lỗi đồng bộ blockchain: ${error.message}`);
     }
@@ -42,7 +44,9 @@ export class CronService {
     try {
       const overdueCount = await this.blockchainService.checkOverdueLoans();
       if (overdueCount > 0) {
-        this.logger.warn(`⚠️ [Cron] Phát hiện ${overdueCount} khoản vay quá hạn`);
+        this.logger.warn(
+          `⚠️ [Cron] Phát hiện ${overdueCount} khoản vay quá hạn`,
+        );
       }
     } catch (error) {
       this.logger.error(`❌ [Cron] Lỗi kiểm tra overdue: ${error.message}`);
@@ -59,10 +63,14 @@ export class CronService {
     try {
       const expiredCount = await this.loanService.checkExpiredRequests();
       if (expiredCount > 0) {
-        this.logger.warn(`⚠️ [Cron] Phát hiện và hủy ${expiredCount} yêu cầu vay đã quá hạn`);
+        this.logger.warn(
+          `⚠️ [Cron] Phát hiện và hủy ${expiredCount} yêu cầu vay đã quá hạn`,
+        );
       }
     } catch (error) {
-      this.logger.error(`❌ [Cron] Lỗi kiểm tra expired requests: ${error.message}`);
+      this.logger.error(
+        `❌ [Cron] Lỗi kiểm tra expired requests: ${error.message}`,
+      );
     }
   }
 
@@ -73,9 +81,13 @@ export class CronService {
   async logBlockchainHealth() {
     try {
       const stats = await this.blockchainService.getBlockchainStats();
-      this.logger.log(`📊 [Cron] Blockchain Health: Connected=${stats.connected}, Block=${stats.blockNumber}, Listening=${stats.isListening}`);
+      this.logger.log(
+        `📊 [Cron] Blockchain Health: Connected=${stats.connected}, Block=${stats.blockNumber}, Listening=${stats.isListening}`,
+      );
     } catch (error) {
-      this.logger.error(`❌ [Cron] Blockchain health check failed: ${error.message}`);
+      this.logger.error(
+        `❌ [Cron] Blockchain health check failed: ${error.message}`,
+      );
     }
   }
 }

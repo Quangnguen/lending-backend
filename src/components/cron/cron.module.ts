@@ -7,11 +7,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
 import { LoanModule } from '../loan/loan.module';
 
 @Module({
-  imports: [
-    ScheduleModule.forRoot(),
-    BlockchainModule,
-    LoanModule,
-  ],
+  imports: [ScheduleModule.forRoot(), BlockchainModule, LoanModule],
   controllers: [CronController],
   providers: [CronService],
   exports: [CronService],

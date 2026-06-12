@@ -1,4 +1,10 @@
-import { IsString, IsIn, IsObject, IsNotEmpty, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsIn,
+  IsObject,
+  IsNotEmpty,
+  IsOptional,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateSettingsDto {
@@ -10,10 +16,12 @@ export class UpdateSettingsDto {
   category: string;
 
   @ApiProperty({ description: 'Các thay đổi dạng key-value' })
-  @IsObject() @IsNotEmpty()
+  @IsObject()
+  @IsNotEmpty()
   changes: Record<string, any>;
 
   @ApiPropertyOptional({ description: 'Lý do thay đổi' })
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   reason?: string;
 }

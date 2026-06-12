@@ -34,7 +34,8 @@ export class UpdateMeRequestDto extends BaseDto {
   @IsOptional()
   @IsString()
   @Matches(/^0x[a-fA-F0-9]{40}$/, {
-    message: 'walletAddress phải là địa chỉ Ethereum hợp lệ (0x + 40 ký tự hex)',
+    message:
+      'walletAddress phải là địa chỉ Ethereum hợp lệ (0x + 40 ký tự hex)',
   })
   walletAddress?: string;
 }

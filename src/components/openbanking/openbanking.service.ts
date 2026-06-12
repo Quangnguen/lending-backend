@@ -52,24 +52,28 @@ export class OpenBankingService {
     bankCode: string,
     accountNumber: string,
     accountName: string,
-    balance: number = 0,       // Số dư tại thời điểm liên kết
+    balance: number = 0, // Số dư tại thời điểm liên kết
     currency: string = 'VND',
     accountType: string = 'CURRENT',
   ) {
     const bank = await this.vietqrService.findBankByCode(bankCode);
     if (!bank) {
-      throw new BadRequestException(`Ngân hàng với mã ${bankCode} không tồn tại`);
+      throw new BadRequestException(
+        `Ngân hàng với mã ${bankCode} không tồn tại`,
+      );
     }
 
     // Encrypt account number for security
     const encryptedAccount = this.encryptToken(accountNumber);
 
     // Kiểm tra trùng: nếu đã có connection cho user + bankCode + accountNumber này thì update
-    const existing = await this.bankConnectionModel.findOne({
-      userId: new Types.ObjectId(userId),
-      bankCode,
-      isActive: true,
-    }).lean();
+    const existing = await this.bankConnectionModel
+      .findOne({
+        userId: new Types.ObjectId(userId),
+        bankCode,
+        isActive: true,
+      })
+      .lean();
 
     let connection;
     if (existing) {
@@ -121,7 +125,7 @@ export class OpenBankingService {
       bankName: conn.bankName,
       bankLogo: conn.bankLogo,
       accountName: conn.accountName,
-      balance: conn.balance || 0,        // Số dư lưu trong DB
+      balance: conn.balance || 0, // Số dư lưu trong DB
       currency: conn.currency || 'VND',
       accountType: conn.accountType || 'CURRENT',
       accountNumberMask: this.maskAccountNumber(

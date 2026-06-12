@@ -19,10 +19,10 @@ import { NotificationModule } from '../notification/notification.module';
   ],
   controllers: [KycController],
   providers: [
-    FileProvider,           // Khởi tạo Cloudinary v2 config
+    FileProvider, // Khởi tạo Cloudinary v2 config
     KycService,
     LocalKycService,
-    KycCloudinaryService,  // Service upload ảnh KYC lên Cloudinary
+    KycCloudinaryService, // Service upload ảnh KYC lên Cloudinary
   ],
   exports: [KycService, LocalKycService, KycCloudinaryService],
 })

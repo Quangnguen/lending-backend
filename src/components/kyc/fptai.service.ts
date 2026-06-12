@@ -63,11 +63,14 @@ export class FptAiService {
   /**
    * OCR nhận dạng CMND/CCCD
    * Endpoint: POST https://api.fpt.ai/vision/idr/vnm
-   * 
+   *
    * @param imageBuffer - Buffer ảnh CMND (JPEG/PNG)
    * @param filename - Tên file gốc
    */
-  async recognizeID(imageBuffer: Buffer, filename: string): Promise<IDRecognitionResult> {
+  async recognizeID(
+    imageBuffer: Buffer,
+    filename: string,
+  ): Promise<IDRecognitionResult> {
     this.logger.log(`Recognizing ID from image: ${filename}`);
 
     const formData = new FormData();
@@ -123,9 +126,7 @@ export class FptAiService {
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       this.logger.error(`FPT.AI IDR error: ${error.message}`);
-      throw new BadRequestException(
-        'Lỗi kết nối FPT.AI. Vui lòng thử lại.',
-      );
+      throw new BadRequestException('Lỗi kết nối FPT.AI. Vui lòng thử lại.');
     }
   }
 
@@ -141,7 +142,7 @@ export class FptAiService {
     this.logger.log('Matching faces: ID photo vs selfie');
 
     const formData = new FormData();
-    // FPT.AI yêu cầu field name là 'file[]' hoặc 'file' tùy version, 
+    // FPT.AI yêu cầu field name là 'file[]' hoặc 'file' tùy version,
     // sử dụng cấu trúc chuẩn nhất cho v2
     formData.append('file[]', idImageBuffer, {
       filename: 'id_photo.jpg',
@@ -154,32 +155,36 @@ export class FptAiService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/dmp/checkface/v1`,
-          formData,
-          {
-            headers: {
-              ...formData.getHeaders(),
-              'api_key': this.apiKey,
-            },
-            timeout: 30000,
+        this.httpService.post(`${this.baseUrl}/dmp/checkface/v1`, formData, {
+          headers: {
+            ...formData.getHeaders(),
+            api_key: this.apiKey,
           },
-        ),
+          timeout: 30000,
+        }),
       );
 
       const data = response.data;
-      this.logger.log(`FPT.AI Face Match response status: ${data.code || data.errorCode}`);
-      
+      this.logger.log(
+        `FPT.AI Face Match response status: ${data.code || data.errorCode}`,
+      );
+
       // Log toàn bộ response để debug nếu cần
-      if (data.code !== '200' && data.errorCode !== 0 && data.errorCode !== undefined) {
-        this.logger.warn(`FPT.AI returned warning/error: ${JSON.stringify(data)}`);
+      if (
+        data.code !== '200' &&
+        data.errorCode !== 0 &&
+        data.errorCode !== undefined
+      ) {
+        this.logger.warn(
+          `FPT.AI returned warning/error: ${JSON.stringify(data)}`,
+        );
       }
 
       // Xử lý similarity từ nhiều cấu trúc trả về khác nhau của FPT.AI
       const similarity = data.data?.similarity ?? data.similarity ?? 0;
-      
+
       // Hạ ngưỡng xuống 70% để demo mượt mà hơn (mặc định FPT khuyến cáo 80%)
-      const threshold = 70; 
+      const threshold = 70;
       const isMatch = similarity >= threshold;
 
       return {
@@ -191,14 +196,21 @@ export class FptAiService {
       };
     } catch (error: any) {
       const errorData = error.response?.data;
-      this.logger.error(`FPT.AI Face Match error: ${error.message} - Meta: ${JSON.stringify(errorData)}`);
-      
+      this.logger.error(
+        `FPT.AI Face Match error: ${error.message} - Meta: ${JSON.stringify(errorData)}`,
+      );
+
       // Nếu lỗi là 403/401 sau khi đã bật dịch vụ, có thể do cache hoặc key chưa cập nhật kịp
       if (error.response?.status === 403 || error.response?.status === 401) {
-        throw new BadRequestException('Dịch vụ Face Match chưa sẵn sàng hoặc Key không hợp lệ. Vui lòng kiểm tra lại Console FPT.AI.');
+        throw new BadRequestException(
+          'Dịch vụ Face Match chưa sẵn sàng hoặc Key không hợp lệ. Vui lòng kiểm tra lại Console FPT.AI.',
+        );
       }
 
-      const errorMsg = errorData?.message || errorData?.errorMessage || 'Lỗi kết nối với hệ thống xác thực khuôn mặt.';
+      const errorMsg =
+        errorData?.message ||
+        errorData?.errorMessage ||
+        'Lỗi kết nối với hệ thống xác thực khuôn mặt.';
       throw new BadRequestException(errorMsg);
     }
   }
@@ -231,17 +243,13 @@ export class FptAiService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/dmp/liveness/v3`,
-          formData,
-          {
-            headers: {
-              ...formData.getHeaders(),
-              'api-key': this.apiKey,
-            },
-            timeout: 60000,
+        this.httpService.post(`${this.baseUrl}/dmp/liveness/v3`, formData, {
+          headers: {
+            ...formData.getHeaders(),
+            'api-key': this.apiKey,
           },
-        ),
+          timeout: 60000,
+        }),
       );
 
       const data = response.data;
@@ -252,14 +260,16 @@ export class FptAiService {
         isDeepfake: data.is_deepfake || false,
         faceMatch: data.face_match
           ? {
-            isMatch: data.face_match.isMatch || false,
-            similarity: data.face_match.similarity || 0,
-          }
+              isMatch: data.face_match.isMatch || false,
+              similarity: data.face_match.similarity || 0,
+            }
           : undefined,
       };
     } catch (error) {
       this.logger.error(`FPT.AI Liveness error: ${error.message}`);
-      throw new BadRequestException('Lỗi xác thực sinh trắc học. Vui lòng thử lại.');
+      throw new BadRequestException(
+        'Lỗi xác thực sinh trắc học. Vui lòng thử lại.',
+      );
     }
   }
 }

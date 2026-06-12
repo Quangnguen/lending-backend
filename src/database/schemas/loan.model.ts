@@ -100,6 +100,14 @@ export class Loan extends BaseModel {
   })
   status: LOAN_STATUS_ENUM;
 
+  // ==================== Collateral ====================
+  @Prop({
+    type: mongoose.Schema.Types.Decimal128,
+    default: 0,
+    get: (v: mongoose.Types.Decimal128) => parseFloat(v?.toString() || '0'),
+  })
+  collateralAmount: number; // ETH amount locked as collateral
+
   // ==================== Blockchain ====================
   @Prop({ type: String, maxlength: 42 })
   loanContractAddress: string;

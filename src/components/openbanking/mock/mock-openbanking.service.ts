@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { MOCK_ACCOUNTS, MOCK_TRANSACTIONS } from './vn-banks.data';
 import { VietQRService } from '../vietqr.service';
 import { OpenBankingService } from '../openbanking.service';
@@ -19,13 +19,18 @@ export class MockOpenBankingService {
   // key: transactionId, value: {bankCode, accountNumber, accountName, timestamp}
   private otpSessions = new Map<
     string,
-    { bankCode: string; accountNumber: string; accountName: string; timestamp: number }
+    {
+      bankCode: string;
+      accountNumber: string;
+      accountName: string;
+      timestamp: number;
+    }
   >();
 
   constructor(
     private readonly vietqrService: VietQRService,
     private readonly openBankingService: OpenBankingService,
-  ) { }
+  ) {}
 
   /**
    * 1. Lấy danh sách ngân hàng - dùng VietQR API thật
@@ -44,7 +49,9 @@ export class MockOpenBankingService {
     // Validate bank exists in VietQR
     const bank = await this.vietqrService.findBankByCode(bankCode);
     if (!bank) {
-      throw new BadRequestException(`Ngân hàng với mã ${bankCode} không tồn tại`);
+      throw new BadRequestException(
+        `Ngân hàng với mã ${bankCode} không tồn tại`,
+      );
     }
 
     // Tạo phiên OTP
@@ -68,13 +75,18 @@ export class MockOpenBankingService {
   /**
    * 3. Bước 2: Xác thực OTP
    */
-  async verifyOtp(dto: VerifyOtpDto, userId?: string): Promise<BankConnectionResponse> {
+  async verifyOtp(
+    dto: VerifyOtpDto,
+    userId?: string,
+  ): Promise<BankConnectionResponse> {
     const { transactionId, otp } = dto;
 
     // Check transactionId
     const session = this.otpSessions.get(transactionId);
     if (!session) {
-      throw new BadRequestException('Phiên liên kết không hợp lệ hoặc đã hết hạn');
+      throw new BadRequestException(
+        'Phiên liên kết không hợp lệ hoặc đã hết hạn',
+      );
     }
 
     // Kiểm tra hết hạn (5 phút)
@@ -109,7 +121,9 @@ export class MockOpenBankingService {
         MOCK_ACCOUNTS[accountKey] = [];
       }
       const existingIndex = MOCK_ACCOUNTS[accountKey].findIndex(
-        (acc) => acc.bankId === session.bankCode && acc.accountNumber === session.accountNumber,
+        (acc) =>
+          acc.bankId === session.bankCode &&
+          acc.accountNumber === session.accountNumber,
       );
       if (existingIndex >= 0) {
         MOCK_ACCOUNTS[accountKey][existingIndex] = newAccount;
@@ -125,13 +139,17 @@ export class MockOpenBankingService {
             session.bankCode,
             session.accountNumber,
             session.accountName,
-            newAccount.balance,   // Lưu balance vào DB
+            newAccount.balance, // Lưu balance vào DB
             'VND',
             'CURRENT',
           );
-          this.logger.log(`✅ Persisted bank connection (balance: ${newAccount.balance}) to MongoDB for user ${userId}`);
+          this.logger.log(
+            `✅ Persisted bank connection (balance: ${newAccount.balance}) to MongoDB for user ${userId}`,
+          );
         } catch (err) {
-          this.logger.warn(`⚠️ Failed to persist bank connection to MongoDB: ${err.message}`);
+          this.logger.warn(
+            `⚠️ Failed to persist bank connection to MongoDB: ${err.message}`,
+          );
           // Không throw - mock flow vẫn thành công
         }
       }
@@ -220,7 +238,10 @@ export class MockOpenBankingService {
     }
     transactionScore = Math.min(transactionScore, 400);
 
-    const totalScore = Math.min(balanceScore + accountsScore + transactionScore, 1000);
+    const totalScore = Math.min(
+      balanceScore + accountsScore + transactionScore,
+      1000,
+    );
 
     // Rating
     let rating: string;

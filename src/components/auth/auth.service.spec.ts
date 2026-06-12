@@ -57,7 +57,10 @@ describe('AuthService', () => {
       providers: [
         AuthService,
         { provide: getModelToken(User.name), useValue: mockUserModel },
-        { provide: getModelToken(UserSession.name), useValue: mockSessionModel },
+        {
+          provide: getModelToken(UserSession.name),
+          useValue: mockSessionModel,
+        },
         { provide: JwtService, useValue: mockJwtService },
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         { provide: EventEmitter2, useValue: mockEventEmitter },
@@ -71,7 +74,10 @@ describe('AuthService', () => {
 
   describe('register()', () => {
     it('TC-AUTH-U01: throws ConflictException when email already exists', async () => {
-      mockUserModel.findOne.mockResolvedValueOnce({ _id: 'existing', email: 'test@test.com' });
+      mockUserModel.findOne.mockResolvedValueOnce({
+        _id: 'existing',
+        email: 'test@test.com',
+      });
 
       await expect(
         service.register({
@@ -85,7 +91,11 @@ describe('AuthService', () => {
 
     it('TC-AUTH-U02: creates user and emits OTP event on valid registration', async () => {
       mockUserModel.findOne.mockResolvedValue(null);
-      const savedUser = { _id: 'new-id', email: 'new@test.com', save: jest.fn() };
+      const savedUser = {
+        _id: 'new-id',
+        email: 'new@test.com',
+        save: jest.fn(),
+      };
       mockUserModel.create.mockResolvedValueOnce(savedUser);
       mockCacheManager.set.mockResolvedValue(undefined);
 
@@ -117,7 +127,11 @@ describe('AuthService', () => {
       (bcrypt.compare as jest.Mock).mockResolvedValueOnce(false);
 
       await expect(
-        service.login({ email: 'a@test.com', password: 'wrong', deviceType: 'MOBILE' } as any),
+        service.login({
+          email: 'a@test.com',
+          password: 'wrong',
+          deviceType: 'MOBILE',
+        } as any),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -132,7 +146,11 @@ describe('AuthService', () => {
       (bcrypt.compare as jest.Mock).mockResolvedValueOnce(true);
 
       await expect(
-        service.login({ email: 'a@test.com', password: 'correct', deviceType: 'MOBILE' } as any),
+        service.login({
+          email: 'a@test.com',
+          password: 'correct',
+          deviceType: 'MOBILE',
+        } as any),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -190,7 +208,11 @@ describe('AuthService', () => {
       mockCacheManager.get.mockResolvedValueOnce('654321'); // stored OTP
 
       await expect(
-        service.verifyLoginOtp({ email: 'u@test.com', otp: '000000', deviceType: 'MOBILE' } as any),
+        service.verifyLoginOtp({
+          email: 'u@test.com',
+          otp: '000000',
+          deviceType: 'MOBILE',
+        } as any),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -198,7 +220,11 @@ describe('AuthService', () => {
       mockCacheManager.get.mockResolvedValueOnce(null); // expired
 
       await expect(
-        service.verifyLoginOtp({ email: 'u@test.com', otp: '123456', deviceType: 'MOBILE' } as any),
+        service.verifyLoginOtp({
+          email: 'u@test.com',
+          otp: '123456',
+          deviceType: 'MOBILE',
+        } as any),
       ).rejects.toThrow(UnauthorizedException);
     });
   });

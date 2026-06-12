@@ -23,7 +23,7 @@ export const KEY_FORGOT_OTP = 'forgot-otp';
 export const FORGOT_OTP_EXPIRES = 1000 * 60 * 15; // 15 phút
 
 // STT-15 FIX: OTP brute-force protection
-export const KEY_OTP_ATTEMPTS  = 'otp-attempts';  // Redis key prefix: otp-attempts:{email}
-export const MAX_OTP_ATTEMPTS  = 5;               // Khóa sau 5 lần sai
-export const OTP_LOCKOUT_TTL   = 1000 * 60 * 15;  // Khóa 15 phút
-export const KEY_OTP_LOCKED    = 'otp-locked';    // Redis key prefix: otp-locked:{email}
+export const KEY_OTP_ATTEMPTS = 'otp-attempts'; // Redis key prefix: otp-attempts:{email}
+export const MAX_OTP_ATTEMPTS = 5; // Khóa sau 5 lần sai
+export const OTP_LOCKOUT_TTL = 1000 * 60 * 15; // Khóa 15 phút
+export const KEY_OTP_LOCKED = 'otp-locked'; // Redis key prefix: otp-locked:{email}

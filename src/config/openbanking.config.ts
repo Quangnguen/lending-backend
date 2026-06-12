@@ -21,7 +21,8 @@ export default registerAs('openbanking', () => {
 
   return {
     vietqrApiUrl: process.env.VIETQR_API_URL || 'https://api.vietqr.io/v2',
-    vietqrImageUrl: process.env.VIETQR_IMAGE_URL || 'https://img.vietqr.io/image',
+    vietqrImageUrl:
+      process.env.VIETQR_IMAGE_URL || 'https://img.vietqr.io/image',
     vietqrClientId: process.env.VIETQR_CLIENT_ID || '',
     vietqrApiKey: process.env.VIETQR_API_KEY || '',
   };

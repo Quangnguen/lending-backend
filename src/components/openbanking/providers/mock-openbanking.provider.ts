@@ -11,7 +11,7 @@ import {
 
 /**
  * MockOpenBankingProvider — Triển khai IOpenBankingProvider cho môi trường demo/dev
- * 
+ *
  * Mô phỏng hoàn chỉnh luồng Open Banking:
  * 1. Consent: OTP-based (không redirect vì không có bank portal)
  * 2. Accounts: 1-3 tài khoản VN với số dư thực tế
@@ -27,7 +27,10 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
   private readonly logger = new Logger(MockOpenBankingProvider.name);
 
   // Lưu consent sessions trong RAM
-  private consents = new Map<string, OBConsent & { bankCode: string; otp: string }>();
+  private consents = new Map<
+    string,
+    OBConsent & { bankCode: string; otp: string }
+  >();
 
   // ==========================================
   // 1. CONSENT FLOW
@@ -52,7 +55,9 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
       otp,
     });
 
-    this.logger.log(`[Mock] Consent initiated: ${consentId} for bank ${bankCode}`);
+    this.logger.log(
+      `[Mock] Consent initiated: ${consentId} for bank ${bankCode}`,
+    );
 
     return {
       consentId,
@@ -61,10 +66,14 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
     };
   }
 
-  async confirmConsent(consentId: string, authCode: string): Promise<OBConsent> {
+  async confirmConsent(
+    consentId: string,
+    authCode: string,
+  ): Promise<OBConsent> {
     const consent = this.consents.get(consentId);
     if (!consent) throw new Error('Consent không tồn tại hoặc đã hết hạn');
-    if (consent.status !== 'AWAITING_AUTHORIZATION') throw new Error('Consent đã được xử lý');
+    if (consent.status !== 'AWAITING_AUTHORIZATION')
+      throw new Error('Consent đã được xử lý');
 
     // Verify OTP (demo: 123456)
     if (authCode !== consent.otp) throw new Error('Mã OTP không đúng');
@@ -105,7 +114,7 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
 
   async getBalance(consentId: string, accountId: string) {
     const accounts = await this.getAccounts(consentId);
-    const account = accounts.find(a => a.accountId === accountId);
+    const account = accounts.find((a) => a.accountId === accountId);
     if (!account) throw new Error('Tài khoản không tồn tại');
 
     return {
@@ -132,7 +141,11 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
       throw new Error('Consent không hợp lệ');
     }
 
-    const allTransactions = this.generateMockTransactions(accountId, fromDate, toDate);
+    const allTransactions = this.generateMockTransactions(
+      accountId,
+      fromDate,
+      toDate,
+    );
     const start = (page - 1) * limit;
     const paginatedTx = allTransactions.slice(start, start + limit);
 
@@ -165,19 +178,26 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
     const allTransactions: OBTransaction[] = [];
     for (const acc of accounts) {
       const { transactions } = await this.getTransactions(
-        consentId, acc.accountId, threeMonthsAgo, now, 1, 500,
+        consentId,
+        acc.accountId,
+        threeMonthsAgo,
+        now,
+        1,
+        500,
       );
       allTransactions.push(...transactions);
     }
 
     // Phân tích thu nhập
-    const credits = allTransactions.filter(tx => tx.type === 'CREDIT');
-    const debits = allTransactions.filter(tx => tx.type === 'DEBIT');
+    const credits = allTransactions.filter((tx) => tx.type === 'CREDIT');
+    const debits = allTransactions.filter((tx) => tx.type === 'DEBIT');
 
     const totalIncome = credits.reduce((sum, tx) => sum + tx.amount, 0);
     const totalExpenses = debits.reduce((sum, tx) => sum + tx.amount, 0);
 
-    const salaryTx = credits.filter(tx => tx.category === TransactionCategory.SALARY);
+    const salaryTx = credits.filter(
+      (tx) => tx.category === TransactionCategory.SALARY,
+    );
     const salaryIncome = salaryTx.reduce((sum, tx) => sum + tx.amount, 0);
 
     // Tính ổn định thu nhập (salary đều đặn = ổn định cao)
@@ -185,7 +205,7 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
     const incomeStability = this.calculateStability(monthlySalaries);
 
     // Detect ngày lương (ngày phổ biến nhất nhận salary)
-    const salaryDays = salaryTx.map(tx => new Date(tx.bookingDate).getDate());
+    const salaryDays = salaryTx.map((tx) => new Date(tx.bookingDate).getDate());
     const salaryDay = this.mostFrequent(salaryDays);
 
     // Chi phí thiết yếu vs tùy ý
@@ -196,7 +216,7 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
       TransactionCategory.LOAN_REPAYMENT,
     ];
     const essentialExpenses = debits
-      .filter(tx => essentialCategories.includes(tx.category))
+      .filter((tx) => essentialCategories.includes(tx.category))
       .reduce((sum, tx) => sum + tx.amount, 0);
     const discretionaryExpenses = totalExpenses - essentialExpenses;
 
@@ -204,10 +224,13 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
     const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
 
     // Detect nợ hiện tại
-    const loanRepayments = debits.filter(tx => tx.category === TransactionCategory.LOAN_REPAYMENT);
-    const monthlyRepayment = loanRepayments.length > 0
-      ? loanRepayments.reduce((sum, tx) => sum + tx.amount, 0) / 3
-      : 0;
+    const loanRepayments = debits.filter(
+      (tx) => tx.category === TransactionCategory.LOAN_REPAYMENT,
+    );
+    const monthlyRepayment =
+      loanRepayments.length > 0
+        ? loanRepayments.reduce((sum, tx) => sum + tx.amount, 0) / 3
+        : 0;
     const monthlyIncome = totalIncome / 3;
     const dti = monthlyIncome > 0 ? monthlyRepayment / monthlyIncome : 0;
 
@@ -231,21 +254,25 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
         monthlyAvgExpenses: totalExpenses / 3,
         essentialExpenses,
         discretionaryExpenses,
-        savingsRate: monthlyIncome > 0 ? (monthlyIncome - totalExpenses / 3) / monthlyIncome : 0,
+        savingsRate:
+          monthlyIncome > 0
+            ? (monthlyIncome - totalExpenses / 3) / monthlyIncome
+            : 0,
       },
       balance: {
         currentBalance: totalBalance,
         avgBalance: totalBalance * 0.85, // Approximate
         minBalance: totalBalance * 0.6,
         totalAccounts: accounts.length,
-        hasSavingsAccount: accounts.some(a => a.accountType === 'SAVINGS'),
+        hasSavingsAccount: accounts.some((a) => a.accountType === 'SAVINGS'),
       },
       behavior: {
         totalTransactions: allTransactions.length,
         avgTransactionsPerMonth: allTransactions.length / 3,
-        regularPayments: debits.filter(tx =>
-          tx.category === TransactionCategory.BILL_PAYMENT ||
-          tx.category === TransactionCategory.INSURANCE
+        regularPayments: debits.filter(
+          (tx) =>
+            tx.category === TransactionCategory.BILL_PAYMENT ||
+            tx.category === TransactionCategory.INSURANCE,
         ).length,
         overdraftCount: 0,
         bounceCount: 0,
@@ -267,9 +294,15 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
 
   private generateMockAccounts(bankCode: string): OBAccountInfo[] {
     const bankNames: Record<string, string> = {
-      VCB: 'Vietcombank', TCB: 'Techcombank', MB: 'MBBank',
-      ICB: 'VietinBank', BIDV: 'BIDV', VPB: 'VPBank',
-      ACB: 'ACB', TPB: 'TPBank', HDB: 'HDBank',
+      VCB: 'Vietcombank',
+      TCB: 'Techcombank',
+      MB: 'MBBank',
+      ICB: 'VietinBank',
+      BIDV: 'BIDV',
+      VPB: 'VPBank',
+      ACB: 'ACB',
+      TPB: 'TPBank',
+      HDB: 'HDBank',
     };
     const bankName = bankNames[bankCode] || bankCode;
 
@@ -288,7 +321,8 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
         lastSyncedAt: new Date(),
       },
     ];
-    accounts[0].availableBalance = accounts[0].balance - this.randomBetween(0, 1_000_000);
+    accounts[0].availableBalance =
+      accounts[0].balance - this.randomBetween(0, 1_000_000);
 
     // 40% chance có thêm savings account
     if (Math.random() < 0.4) {
@@ -332,13 +366,18 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
         // Chỉ tạo 1 lần/tháng (ngày 25)
         if (dayOfMonth === 25) {
           const salary = this.randomBetween(15_000_000, 35_000_000);
-          transactions.push(this.makeTx(
-            txCounter++, accountId, salary, 'CREDIT',
-            TransactionCategory.SALARY,
-            `LUONG THANG ${monthStr} - CTY TNHH CONG NGHE ABC`,
-            'CTY TNHH CONG NGHE ABC',
-            current,
-          ));
+          transactions.push(
+            this.makeTx(
+              txCounter++,
+              accountId,
+              salary,
+              'CREDIT',
+              TransactionCategory.SALARY,
+              `LUONG THANG ${monthStr} - CTY TNHH CONG NGHE ABC`,
+              'CTY TNHH CONG NGHE ABC',
+              current,
+            ),
+          );
         }
       }
 
@@ -346,133 +385,188 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
       if (dayOfMonth === 1 || dayOfMonth === 2) {
         // Tiền điện (500k-1.5tr)
         if (dayOfMonth === 1) {
-          transactions.push(this.makeTx(
-            txCounter++, accountId,
-            this.randomBetween(500_000, 1_500_000), 'DEBIT',
-            TransactionCategory.BILL_PAYMENT,
-            `THANH TOAN TIEN DIEN T${current.getMonth() + 1}`,
-            'EVN',
-            current,
-          ));
+          transactions.push(
+            this.makeTx(
+              txCounter++,
+              accountId,
+              this.randomBetween(500_000, 1_500_000),
+              'DEBIT',
+              TransactionCategory.BILL_PAYMENT,
+              `THANH TOAN TIEN DIEN T${current.getMonth() + 1}`,
+              'EVN',
+              current,
+            ),
+          );
         }
         // Tiền nước (100k-300k)
         if (dayOfMonth === 2) {
-          transactions.push(this.makeTx(
-            txCounter++, accountId,
-            this.randomBetween(100_000, 300_000), 'DEBIT',
-            TransactionCategory.BILL_PAYMENT,
-            `THANH TOAN TIEN NUOC T${current.getMonth() + 1}`,
-            'CONG TY NUOC SACH',
-            current,
-          ));
+          transactions.push(
+            this.makeTx(
+              txCounter++,
+              accountId,
+              this.randomBetween(100_000, 300_000),
+              'DEBIT',
+              TransactionCategory.BILL_PAYMENT,
+              `THANH TOAN TIEN NUOC T${current.getMonth() + 1}`,
+              'CONG TY NUOC SACH',
+              current,
+            ),
+          );
         }
       }
 
       // === INTERNET / ĐIỆN THOẠI (ngày 5) ===
       if (dayOfMonth === 5) {
-        transactions.push(this.makeTx(
-          txCounter++, accountId,
-          this.randomBetween(200_000, 500_000), 'DEBIT',
-          TransactionCategory.BILL_PAYMENT,
-          'THANH TOAN INTERNET VIETTEL',
-          'VIETTEL',
-          current,
-        ));
+        transactions.push(
+          this.makeTx(
+            txCounter++,
+            accountId,
+            this.randomBetween(200_000, 500_000),
+            'DEBIT',
+            TransactionCategory.BILL_PAYMENT,
+            'THANH TOAN INTERNET VIETTEL',
+            'VIETTEL',
+            current,
+          ),
+        );
       }
 
       // === BẢO HIỂM (ngày 10, hàng tháng) ===
       if (dayOfMonth === 10 && Math.random() < 0.6) {
-        transactions.push(this.makeTx(
-          txCounter++, accountId,
-          this.randomBetween(500_000, 2_000_000), 'DEBIT',
-          TransactionCategory.INSURANCE,
-          'DONG PHI BAO HIEM NHAN THO',
-          'MANULIFE VN',
-          current,
-        ));
+        transactions.push(
+          this.makeTx(
+            txCounter++,
+            accountId,
+            this.randomBetween(500_000, 2_000_000),
+            'DEBIT',
+            TransactionCategory.INSURANCE,
+            'DONG PHI BAO HIEM NHAN THO',
+            'MANULIFE VN',
+            current,
+          ),
+        );
       }
 
       // === MUA SẮM (2-3 lần/tuần) ===
       if (Math.random() < 0.35) {
-        const shops = ['SHOPEE VN', 'LAZADA VN', 'TIKI', 'SENDO', 'WINMART', 'BIG C', 'LOTTE MART'];
-        transactions.push(this.makeTx(
-          txCounter++, accountId,
-          this.randomBetween(50_000, 2_000_000), 'DEBIT',
-          TransactionCategory.SHOPPING,
-          `MUA SAM TAI ${this.randomItem(shops)}`,
-          this.randomItem(shops),
-          current,
-        ));
+        const shops = [
+          'SHOPEE VN',
+          'LAZADA VN',
+          'TIKI',
+          'SENDO',
+          'WINMART',
+          'BIG C',
+          'LOTTE MART',
+        ];
+        transactions.push(
+          this.makeTx(
+            txCounter++,
+            accountId,
+            this.randomBetween(50_000, 2_000_000),
+            'DEBIT',
+            TransactionCategory.SHOPPING,
+            `MUA SAM TAI ${this.randomItem(shops)}`,
+            this.randomItem(shops),
+            current,
+          ),
+        );
       }
 
       // === ĂN UỐNG (gần như hàng ngày) ===
       if (Math.random() < 0.5) {
-        const foods = ['GRAB FOOD', 'SHOPEE FOOD', 'NOW VN', 'HIGHLANDS COFFEE', 'THE COFFEE HOUSE'];
-        transactions.push(this.makeTx(
-          txCounter++, accountId,
-          this.randomBetween(30_000, 300_000), 'DEBIT',
-          TransactionCategory.FOOD,
-          `THANH TOAN ${this.randomItem(foods)}`,
-          this.randomItem(foods),
-          current,
-        ));
+        const foods = [
+          'GRAB FOOD',
+          'SHOPEE FOOD',
+          'NOW VN',
+          'HIGHLANDS COFFEE',
+          'THE COFFEE HOUSE',
+        ];
+        transactions.push(
+          this.makeTx(
+            txCounter++,
+            accountId,
+            this.randomBetween(30_000, 300_000),
+            'DEBIT',
+            TransactionCategory.FOOD,
+            `THANH TOAN ${this.randomItem(foods)}`,
+            this.randomItem(foods),
+            current,
+          ),
+        );
       }
 
       // === DI CHUYỂN (Grab/Be) ===
       if (Math.random() < 0.3) {
-        transactions.push(this.makeTx(
-          txCounter++, accountId,
-          this.randomBetween(15_000, 150_000), 'DEBIT',
-          TransactionCategory.TRANSPORT,
-          'THANH TOAN GRAB',
-          'GRAB VN',
-          current,
-        ));
+        transactions.push(
+          this.makeTx(
+            txCounter++,
+            accountId,
+            this.randomBetween(15_000, 150_000),
+            'DEBIT',
+            TransactionCategory.TRANSPORT,
+            'THANH TOAN GRAB',
+            'GRAB VN',
+            current,
+          ),
+        );
       }
 
       // === CHUYỂN KHOẢN NHẬN (không định kỳ) ===
       if (Math.random() < 0.1) {
         const names = ['TRAN VAN B', 'LE THI C', 'PHAM VAN D', 'NGUYEN THI E'];
-        transactions.push(this.makeTx(
-          txCounter++, accountId,
-          this.randomBetween(500_000, 10_000_000), 'CREDIT',
-          TransactionCategory.TRANSFER_IN,
-          `NHAN TIEN TU ${this.randomItem(names)}`,
-          this.randomItem(names),
-          current,
-        ));
+        transactions.push(
+          this.makeTx(
+            txCounter++,
+            accountId,
+            this.randomBetween(500_000, 10_000_000),
+            'CREDIT',
+            TransactionCategory.TRANSFER_IN,
+            `NHAN TIEN TU ${this.randomItem(names)}`,
+            this.randomItem(names),
+            current,
+          ),
+        );
       }
 
       // === CHUYỂN KHOẢN ĐI (không định kỳ) ===
       if (Math.random() < 0.08) {
-        transactions.push(this.makeTx(
-          txCounter++, accountId,
-          this.randomBetween(500_000, 5_000_000), 'DEBIT',
-          TransactionCategory.TRANSFER_OUT,
-          'CHUYEN TIEN CHO BAN',
-          'NGUYEN VAN X - BIDV',
-          current,
-        ));
+        transactions.push(
+          this.makeTx(
+            txCounter++,
+            accountId,
+            this.randomBetween(500_000, 5_000_000),
+            'DEBIT',
+            TransactionCategory.TRANSFER_OUT,
+            'CHUYEN TIEN CHO BAN',
+            'NGUYEN VAN X - BIDV',
+            current,
+          ),
+        );
       }
 
       // === TRẢ NỢ VAY (nếu có - ngày 15) ===
       if (dayOfMonth === 15 && Math.random() < 0.3) {
-        transactions.push(this.makeTx(
-          txCounter++, accountId,
-          this.randomBetween(2_000_000, 8_000_000), 'DEBIT',
-          TransactionCategory.LOAN_REPAYMENT,
-          'TRA NO VAY TIN CHAP - VPBANK',
-          'VPBANK',
-          current,
-        ));
+        transactions.push(
+          this.makeTx(
+            txCounter++,
+            accountId,
+            this.randomBetween(2_000_000, 8_000_000),
+            'DEBIT',
+            TransactionCategory.LOAN_REPAYMENT,
+            'TRA NO VAY TIN CHAP - VPBANK',
+            'VPBANK',
+            current,
+          ),
+        );
       }
 
       current.setDate(current.getDate() + 1);
     }
 
     // Sắp xếp theo ngày mới nhất
-    return transactions.sort((a, b) =>
-      new Date(b.bookingDate).getTime() - new Date(a.bookingDate).getTime()
+    return transactions.sort(
+      (a, b) =>
+        new Date(b.bookingDate).getTime() - new Date(a.bookingDate).getTime(),
     );
   }
 
@@ -531,7 +625,8 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
     if (values.length < 2) return 0.5;
     const avg = values.reduce((s, v) => s + v, 0) / values.length;
     if (avg === 0) return 0;
-    const variance = values.reduce((s, v) => s + Math.pow(v - avg, 2), 0) / values.length;
+    const variance =
+      values.reduce((s, v) => s + Math.pow(v - avg, 2), 0) / values.length;
     const cv = Math.sqrt(variance) / avg; // Coefficient of variation
     return Math.max(0, Math.min(1, 1 - cv)); // Lower CV = higher stability
   }
@@ -540,9 +635,13 @@ export class MockOpenBankingProvider implements IOpenBankingProvider {
     if (arr.length === 0) return undefined;
     const freq = new Map<number, number>();
     for (const v of arr) freq.set(v, (freq.get(v) || 0) + 1);
-    let maxFreq = 0, maxVal = arr[0];
+    let maxFreq = 0,
+      maxVal = arr[0];
     for (const [val, count] of freq) {
-      if (count > maxFreq) { maxFreq = count; maxVal = val; }
+      if (count > maxFreq) {
+        maxFreq = count;
+        maxVal = val;
+      }
     }
     return maxVal;
   }

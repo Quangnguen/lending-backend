@@ -15,7 +15,11 @@ export class Notification {
   @Prop({ required: true })
   message: string;
 
-  @Prop({ type: String, enum: Object.values(NotificationTypeEnum), default: NotificationTypeEnum.SYSTEM })
+  @Prop({
+    type: String,
+    enum: Object.values(NotificationTypeEnum),
+    default: NotificationTypeEnum.SYSTEM,
+  })
   type: string;
 
   @Prop({ default: false, index: true })

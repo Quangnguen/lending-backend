@@ -1,21 +1,31 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { encrypt, encryptRandom, decrypt } from '../../core/utils/encryption.util';
+import {
+  encrypt,
+  encryptRandom,
+  decrypt,
+} from '../../core/utils/encryption.util';
 
 export type KycRecordDocument = KycRecord & Document;
 
 export enum KYC_STEP_STATUS {
-  NOT_STARTED      = 'NOT_STARTED',
-  ID_VERIFIED      = 'ID_VERIFIED',
-  FACE_VERIFIED    = 'FACE_VERIFIED',
-  COMPLETED        = 'COMPLETED',
-  REJECTED         = 'REJECTED',
+  NOT_STARTED = 'NOT_STARTED',
+  ID_VERIFIED = 'ID_VERIFIED',
+  FACE_VERIFIED = 'FACE_VERIFIED',
+  COMPLETED = 'COMPLETED',
+  REJECTED = 'REJECTED',
   REQUIRE_REVERIFY = 'REQUIRE_REVERIFY',
 }
 
 @Schema({ timestamps: true, collection: 'kyc_records' })
 export class KycRecord {
-  @Prop({ type: Types.ObjectId, required: true, ref: 'User', unique: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    required: true,
+    ref: 'User',
+    unique: true,
+    index: true,
+  })
   userId: Types.ObjectId;
 
   @Prop({
@@ -27,19 +37,19 @@ export class KycRecord {
 
   @Prop({ type: Object })
   idInfo: {
-    id?: string;          // Số CCCD — encrypt() deterministic (cần tìm kiếm trùng lặp)
-    name?: string;        // Họ tên — encryptRandom()
-    dob?: string;         // Ngày sinh — encryptRandom()
-    sex?: string;         // Giới tính — encryptRandom()
+    id?: string; // Số CCCD — encrypt() deterministic (cần tìm kiếm trùng lặp)
+    name?: string; // Họ tên — encryptRandom()
+    dob?: string; // Ngày sinh — encryptRandom()
+    sex?: string; // Giới tính — encryptRandom()
     nationality?: string; // Quốc tịch — encryptRandom()
-    home?: string;        // Quê quán — encryptRandom()
-    address?: string;     // Địa chỉ thường trú — encryptRandom()
-    doe?: string;         // Ngày hết hạn — encryptRandom()
-    type?: string;        // Loại giấy tờ
-    features?: string;    // Đặc điểm nhận dạng — encryptRandom()
-    issue_date?: string;  // Ngày cấp — encryptRandom()
-    issue_loc?: string;   // Nơi cấp — encryptRandom()
-    confidence?: number;  // Độ tin cậy OCR (không nhạy cảm)
+    home?: string; // Quê quán — encryptRandom()
+    address?: string; // Địa chỉ thường trú — encryptRandom()
+    doe?: string; // Ngày hết hạn — encryptRandom()
+    type?: string; // Loại giấy tờ
+    features?: string; // Đặc điểm nhận dạng — encryptRandom()
+    issue_date?: string; // Ngày cấp — encryptRandom()
+    issue_loc?: string; // Nơi cấp — encryptRandom()
+    confidence?: number; // Độ tin cậy OCR (không nhạy cảm)
   };
 
   @Prop({ type: String })
@@ -92,35 +102,35 @@ function encryptIdInfo(info: Record<string, any>): void {
   if (!info) return;
 
   // encrypt() deterministic — cần cho tìm kiếm trùng số CCCD
-  if (info.id)          info.id          = encrypt(info.id);
+  if (info.id) info.id = encrypt(info.id);
 
   // encryptRandom() — không cần exact-match search, bảo mật tốt hơn
-  if (info.name)        info.name        = encryptRandom(info.name);
-  if (info.dob)         info.dob         = encryptRandom(info.dob);
-  if (info.sex)         info.sex         = encryptRandom(info.sex);
+  if (info.name) info.name = encryptRandom(info.name);
+  if (info.dob) info.dob = encryptRandom(info.dob);
+  if (info.sex) info.sex = encryptRandom(info.sex);
   if (info.nationality) info.nationality = encryptRandom(info.nationality);
-  if (info.home)        info.home        = encryptRandom(info.home);
-  if (info.address)     info.address     = encryptRandom(info.address);
-  if (info.doe)         info.doe         = encryptRandom(info.doe);
-  if (info.features)    info.features    = encryptRandom(info.features);
-  if (info.issue_date)  info.issue_date  = encryptRandom(info.issue_date);
-  if (info.issue_loc)   info.issue_loc   = encryptRandom(info.issue_loc);
+  if (info.home) info.home = encryptRandom(info.home);
+  if (info.address) info.address = encryptRandom(info.address);
+  if (info.doe) info.doe = encryptRandom(info.doe);
+  if (info.features) info.features = encryptRandom(info.features);
+  if (info.issue_date) info.issue_date = encryptRandom(info.issue_date);
+  if (info.issue_loc) info.issue_loc = encryptRandom(info.issue_loc);
   // type và confidence không phải PII — không cần mã hóa
 }
 
 function decryptIdInfo(info: Record<string, any>): void {
   if (!info) return;
-  if (info.id)          info.id          = decrypt(info.id);
-  if (info.name)        info.name        = decrypt(info.name);
-  if (info.dob)         info.dob         = decrypt(info.dob);
-  if (info.sex)         info.sex         = decrypt(info.sex);
+  if (info.id) info.id = decrypt(info.id);
+  if (info.name) info.name = decrypt(info.name);
+  if (info.dob) info.dob = decrypt(info.dob);
+  if (info.sex) info.sex = decrypt(info.sex);
   if (info.nationality) info.nationality = decrypt(info.nationality);
-  if (info.home)        info.home        = decrypt(info.home);
-  if (info.address)     info.address     = decrypt(info.address);
-  if (info.doe)         info.doe         = decrypt(info.doe);
-  if (info.features)    info.features    = decrypt(info.features);
-  if (info.issue_date)  info.issue_date  = decrypt(info.issue_date);
-  if (info.issue_loc)   info.issue_loc   = decrypt(info.issue_loc);
+  if (info.home) info.home = decrypt(info.home);
+  if (info.address) info.address = decrypt(info.address);
+  if (info.doe) info.doe = decrypt(info.doe);
+  if (info.features) info.features = decrypt(info.features);
+  if (info.issue_date) info.issue_date = decrypt(info.issue_date);
+  if (info.issue_loc) info.issue_loc = decrypt(info.issue_loc);
 }
 
 // Pre-save: mã hóa trước khi ghi vào MongoDB

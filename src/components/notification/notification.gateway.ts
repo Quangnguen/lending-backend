@@ -54,7 +54,9 @@ export class NotificationGateway
     }
     this.connectedUsers.get(userId).add(client.id);
 
-    this.logger.log(`[connect] userId=${userId} socketId=${client.id} (${this.connectedUsers.get(userId).size} connections)`);
+    this.logger.log(
+      `[connect] userId=${userId} socketId=${client.id} (${this.connectedUsers.get(userId).size} connections)`,
+    );
   }
 
   handleDisconnect(client: Socket) {
@@ -83,7 +85,10 @@ export class NotificationGateway
 
   // ── Client event: client yêu cầu unread count ────────────────────────────
   @SubscribeMessage('notification:get_unread')
-  handleGetUnread(@ConnectedSocket() client: Socket, @MessageBody() _data: any) {
+  handleGetUnread(
+    @ConnectedSocket() _client: Socket,
+    @MessageBody() _data: any,
+  ) {
     // NotificationService sẽ handle qua HTTP, gateway chỉ forward
     // (không cần implementation - client dùng REST endpoint)
   }
@@ -110,7 +115,9 @@ export class NotificationGateway
       });
       return payload.id ?? null;
     } catch (e) {
-      this.logger.warn(`[connect] Invalid token — disconnecting ${client.id}: ${e.message}`);
+      this.logger.warn(
+        `[connect] Invalid token — disconnecting ${client.id}: ${e.message}`,
+      );
       return null;
     }
   }

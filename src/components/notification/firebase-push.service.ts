@@ -2,7 +2,10 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as admin from 'firebase-admin';
-import { DeviceToken, DeviceTokenDocument } from './schemas/device-token.schema';
+import {
+  DeviceToken,
+  DeviceTokenDocument,
+} from './schemas/device-token.schema';
 
 export interface PushPayload {
   title: string;
@@ -21,18 +24,24 @@ export class FirebasePushService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    const projectId     = process.env.FIREBASE_PROJECT_ID;
-    const clientEmail   = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKey    = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
     if (!projectId || !clientEmail || !privateKey) {
-      this.logger.warn('Firebase env vars missing — push notifications disabled');
+      this.logger.warn(
+        'Firebase env vars missing — push notifications disabled',
+      );
       return;
     }
 
     if (admin.apps.length === 0) {
       this.firebaseApp = admin.initializeApp({
-        credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
+        credential: admin.credential.cert({
+          projectId,
+          clientEmail,
+          privateKey,
+        }),
       });
     } else {
       this.firebaseApp = admin.app();
@@ -70,7 +79,9 @@ export class FirebasePushService implements OnModuleInit {
           ) {
             invalidTokens.push(t.token);
           } else {
-            this.logger.error(`FCM send error userId=${userId}: ${err.message}`);
+            this.logger.error(
+              `FCM send error userId=${userId}: ${err.message}`,
+            );
           }
         }
       }),
@@ -81,7 +92,9 @@ export class FirebasePushService implements OnModuleInit {
         { token: { $in: invalidTokens } },
         { isActive: false },
       );
-      this.logger.warn(`Deactivated ${invalidTokens.length} invalid FCM token(s) for userId=${userId}`);
+      this.logger.warn(
+        `Deactivated ${invalidTokens.length} invalid FCM token(s) for userId=${userId}`,
+      );
     }
   }
 
@@ -91,10 +104,30 @@ export class FirebasePushService implements OnModuleInit {
   }
 
   // Đăng ký FCM token cho user
-  async registerToken(userId: string, token: string, platform: string, deviceId?: string) {
+  async registerToken(
+    userId: string,
+    token: string,
+    platform: string,
+    deviceId?: string,
+  ) {
+    const currentUserId = new Types.ObjectId(userId);
+
+    // Một FCM token đại diện cho một app installation. Khi đổi tài khoản trên
+    // cùng thiết bị, vô hiệu hóa liên kết cũ để tránh push của user trước.
+    await this.deviceTokenModel.updateMany(
+      { token, userId: { $ne: currentUserId }, isActive: true },
+      { isActive: false },
+    );
+
     await this.deviceTokenModel.findOneAndUpdate(
-      { userId: new Types.ObjectId(userId), token },
-      { userId: new Types.ObjectId(userId), token, platform, deviceId: deviceId ?? '', isActive: true },
+      { userId: currentUserId, token },
+      {
+        userId: currentUserId,
+        token,
+        platform,
+        deviceId: deviceId ?? '',
+        isActive: true,
+      },
       { upsert: true, new: true },
     );
   }

@@ -61,7 +61,9 @@ export class LocalKycService {
     imageBuffer: Buffer,
     filename: string,
   ): Promise<IDRecognitionResult> {
-    this.logger.log(`[OCR] Processing: ${filename} (${(imageBuffer.length / 1024).toFixed(1)} KB)`);
+    this.logger.log(
+      `[OCR] Processing: ${filename} (${(imageBuffer.length / 1024).toFixed(1)} KB)`,
+    );
 
     if (!this.fptApiKey) {
       throw new InternalServerErrorException(
@@ -101,7 +103,9 @@ export class LocalKycService {
       );
 
       if (res?.errorCode !== 0 || !res?.data?.length) {
-        this.logger.warn(`[FPT AI] Response error: ${res?.errorMessage || JSON.stringify(res)}`);
+        this.logger.warn(
+          `[FPT AI] Response error: ${res?.errorMessage || JSON.stringify(res)}`,
+        );
         return null;
       }
 
@@ -142,7 +146,10 @@ export class LocalKycService {
   ): Promise<FaceMatchResult> {
     this.logger.log('[FaceMatch] Starting face comparison...');
 
-    const fptResult = await this.matchFacesWithFptAi(idImageBuffer, selfieBuffer);
+    const fptResult = await this.matchFacesWithFptAi(
+      idImageBuffer,
+      selfieBuffer,
+    );
     if (fptResult) return fptResult;
 
     return this.matchFacesWithJimp(idImageBuffer, selfieBuffer);
@@ -156,23 +163,35 @@ export class LocalKycService {
 
     try {
       const form = new FormData();
-      form.append('file[]', idBuffer, { filename: 'id.jpg', contentType: 'image/jpeg' });
-      form.append('file[]', selfieBuffer, { filename: 'selfie.jpg', contentType: 'image/jpeg' });
+      form.append('file[]', idBuffer, {
+        filename: 'id.jpg',
+        contentType: 'image/jpeg',
+      });
+      form.append('file[]', selfieBuffer, {
+        filename: 'selfie.jpg',
+        contentType: 'image/jpeg',
+      });
 
       const { data: res } = await axios.post(
         'https://api.fpt.ai/dmp/checkface/v1',
         form,
-        { headers: { 'api-key': this.fptApiKey, ...form.getHeaders() }, timeout: 20000 },
+        {
+          headers: { 'api-key': this.fptApiKey, ...form.getHeaders() },
+          timeout: 20000,
+        },
       );
 
       if (res?.code === '200' && res?.data) {
         const rawSimilarity = res.data.similarity ?? 0;
-        const similarity = rawSimilarity <= 1
-          ? Math.round(rawSimilarity * 100)
-          : Math.round(rawSimilarity);
+        const similarity =
+          rawSimilarity <= 1
+            ? Math.round(rawSimilarity * 100)
+            : Math.round(rawSimilarity);
         const isMatch = res.data.isMatch === true || similarity >= 70;
 
-        this.logger.log(`[FaceMatch FPT] Similarity: ${similarity}% | Match: ${isMatch}`);
+        this.logger.log(
+          `[FaceMatch FPT] Similarity: ${similarity}% | Match: ${isMatch}`,
+        );
         return {
           isMatch,
           similarity,
@@ -207,9 +226,18 @@ export class LocalKycService {
       const d2 = img2.bitmap.data;
 
       const expectedLen = SIZE * SIZE * 4;
-      if (!d1 || !d2 || d1.length !== expectedLen || d2.length !== expectedLen) {
-        this.logger.warn(`[FaceMatch Jimp] Unexpected buffer size: d1=${d1?.length}, d2=${d2?.length}`);
-        throw new BadRequestException('Ảnh không hợp lệ hoặc quá nhỏ. Vui lòng chụp lại rõ hơn.');
+      if (
+        !d1 ||
+        !d2 ||
+        d1.length !== expectedLen ||
+        d2.length !== expectedLen
+      ) {
+        this.logger.warn(
+          `[FaceMatch Jimp] Unexpected buffer size: d1=${d1?.length}, d2=${d2?.length}`,
+        );
+        throw new BadRequestException(
+          'Ảnh không hợp lệ hoặc quá nhỏ. Vui lòng chụp lại rõ hơn.',
+        );
       }
 
       let mse = 0;
@@ -218,13 +246,18 @@ export class LocalKycService {
         const g2 = 0.299 * d2[i] + 0.587 * d2[i + 1] + 0.114 * d2[i + 2];
         mse += (g1 - g2) ** 2;
       }
-      mse /= (SIZE * SIZE);
+      mse /= SIZE * SIZE;
 
-      const similarity = Math.max(0, Math.min(100, Math.round((1 - mse / 65025) * 100)));
+      const similarity = Math.max(
+        0,
+        Math.min(100, Math.round((1 - mse / 65025) * 100)),
+      );
       const THRESHOLD = 30;
       const isMatch = similarity >= THRESHOLD;
 
-      this.logger.log(`[FaceMatch Jimp] MSE: ${mse.toFixed(2)} | Similarity: ${similarity}% | Match: ${isMatch}`);
+      this.logger.log(
+        `[FaceMatch Jimp] MSE: ${mse.toFixed(2)} | Similarity: ${similarity}% | Match: ${isMatch}`,
+      );
 
       return {
         isMatch,
@@ -235,7 +268,9 @@ export class LocalKycService {
       };
     } catch (err: any) {
       this.logger.error(`[FaceMatch Jimp] Error: ${err.message}`);
-      throw new BadRequestException('Không thể xử lý ảnh. Vui lòng chụp lại rõ hơn.');
+      throw new BadRequestException(
+        'Không thể xử lý ảnh. Vui lòng chụp lại rõ hơn.',
+      );
     }
   }
 
@@ -244,15 +279,20 @@ export class LocalKycService {
     try {
       const SIZE_W = 9;
       const SIZE_H = 8;
-      const img = (await Jimp.read(imageBuffer)).resize({ w: SIZE_W, h: SIZE_H });
+      const img = (await Jimp.read(imageBuffer)).resize({
+        w: SIZE_W,
+        h: SIZE_H,
+      });
       const data = img.bitmap.data;
       let bits = '';
       for (let y = 0; y < SIZE_H; y++) {
         for (let x = 0; x < SIZE_W - 1; x++) {
           const i = (y * SIZE_W + x) * 4;
           const j = (y * SIZE_W + x + 1) * 4;
-          const gray1 = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-          const gray2 = 0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
+          const gray1 =
+            0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          const gray2 =
+            0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
           bits += gray1 >= gray2 ? '1' : '0';
         }
       }
@@ -275,7 +315,10 @@ export class LocalKycService {
       const a = parseInt(hashA[i], 16);
       const b = parseInt(hashB[i], 16);
       let xor = a ^ b;
-      while (xor) { dist += xor & 1; xor >>= 1; }
+      while (xor) {
+        dist += xor & 1;
+        xor >>= 1;
+      }
     }
     return dist;
   }

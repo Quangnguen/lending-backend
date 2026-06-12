@@ -1,5 +1,14 @@
 import {
-  Body, Controller, Delete, Get, Param, Post, Put, Query, Request, UseGuards,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { NotificationService } from './notification.service';
@@ -29,7 +38,11 @@ export class NotificationController {
     @Query('skip') skip = '0',
   ) {
     const userId = req.user._id?.toString() || req.user.id?.toString();
-    return this.notificationService.getMyNotifications(userId, Number(limit), Number(skip));
+    return this.notificationService.getMyNotifications(
+      userId,
+      Number(limit),
+      Number(skip),
+    );
   }
 
   @Put('read-all')
@@ -67,9 +80,17 @@ export class NotificationController {
 
   @Post('device-token')
   @ApiOperation({ summary: 'Đăng ký FCM token (gọi sau khi đăng nhập)' })
-  async registerDeviceToken(@Request() req, @Body() dto: RegisterDeviceTokenDto) {
+  async registerDeviceToken(
+    @Request() req,
+    @Body() dto: RegisterDeviceTokenDto,
+  ) {
     const userId = req.user._id?.toString() || req.user.id?.toString();
-    await this.pushService.registerToken(userId, dto.token, dto.platform, dto.deviceId);
+    await this.pushService.registerToken(
+      userId,
+      dto.token,
+      dto.platform,
+      dto.deviceId,
+    );
     return { success: true };
   }
 
@@ -88,7 +109,12 @@ export class NotificationController {
   @Roles(ROLE_ENUM.ADMIN)
   @ApiOperation({ summary: '[Admin] Gửi thông báo đến user(s) hoặc tất cả' })
   async adminSendNotification(@Body() dto: AdminSendNotificationDto) {
-    console.log('>>> [CTRL] adminSendNotification hit, title:', dto?.title, 'targetUserIds:', dto?.targetUserIds);
+    console.log(
+      '>>> [CTRL] adminSendNotification hit, title:',
+      dto?.title,
+      'targetUserIds:',
+      dto?.targetUserIds,
+    );
     try {
       const result = await this.notificationService.sendAdminNotification({
         targetUserIds: dto.targetUserIds,
@@ -99,7 +125,11 @@ export class NotificationController {
       console.log('>>> [CTRL] result:', JSON.stringify(result));
       return { success: true, ...result };
     } catch (err) {
-      console.error('>>> [CTRL] sendAdminNotification ERROR:', err?.message, err?.stack);
+      console.error(
+        '>>> [CTRL] sendAdminNotification ERROR:',
+        err?.message,
+        err?.stack,
+      );
       throw err;
     }
   }

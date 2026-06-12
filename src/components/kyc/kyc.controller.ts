@@ -52,28 +52,40 @@ export class KycController {
     private readonly localKycService: LocalKycService,
     private readonly kycService: KycService,
     private readonly kycCloudinaryService: KycCloudinaryService,
-  ) { }
+  ) {}
 
   // ─── Bước 1: Upload ảnh CCCD → OCR → Upload Cloudinary → Lưu kết quả ────
   @Post('recognize-id')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'OCR nhận dạng CMND/CCCD và lưu ảnh lên Cloudinary' })
+  @ApiOperation({
+    summary: 'OCR nhận dạng CMND/CCCD và lưu ảnh lên Cloudinary',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        image: { type: 'string', format: 'binary', description: 'Ảnh CMND/CCCD' },
-        imageType: { type: 'string', enum: ['front', 'back'], description: 'Mặt trước hay mặt sau' },
+        image: {
+          type: 'string',
+          format: 'binary',
+          description: 'Ảnh CMND/CCCD',
+        },
+        imageType: {
+          type: 'string',
+          enum: ['front', 'back'],
+          description: 'Mặt trước hay mặt sau',
+        },
       },
     },
   })
-  @UseInterceptors(FileInterceptor('image', {
-    storage: imageMemoryStorage,
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: imageFilter,
-  }))
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: imageMemoryStorage,
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: imageFilter,
+    }),
+  )
   async recognizeID(
     @Request() req,
     @UploadedFile() file: Express.Multer.File,
@@ -89,7 +101,10 @@ export class KycController {
     );
 
     // 1. OCR nhận dạng (từ buffer trong RAM)
-    const result = await this.localKycService.recognizeID(file.buffer, file.originalname);
+    const result = await this.localKycService.recognizeID(
+      file.buffer,
+      file.originalname,
+    );
 
     // 2. Nếu là mặt trước và OCR lấy được số CCCD → kiểm tra trùng NGAY
     //    Làm trước upload Cloudinary để không lưu ảnh của người dùng bất hợp lệ
@@ -110,14 +125,18 @@ export class KycController {
         );
         this.logger.log(`[KYC Step 1] ✅ Uploaded to Cloudinary: ${imageUrl}`);
       } catch (uploadErr) {
-        this.logger.error(`[KYC Step 1] ❌ Cloudinary upload failed: ${uploadErr.message}`);
+        this.logger.error(
+          `[KYC Step 1] ❌ Cloudinary upload failed: ${uploadErr.message}`,
+        );
       }
     }
 
     // 4. Lưu kết quả OCR + URL ảnh vào MongoDB
     if (userId) {
       await this.kycService.saveIDResult(userId, result, imageUrl, imageType);
-      this.logger.log(`[KYC Step 1] ✅ ID result saved for user ${userId} (${imageType})`);
+      this.logger.log(
+        `[KYC Step 1] ✅ ID result saved for user ${userId} (${imageType})`,
+      );
     }
 
     return {
@@ -132,7 +151,9 @@ export class KycController {
   @Post('face-match')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'So khớp khuôn mặt và lưu ảnh selfie lên Cloudinary' })
+  @ApiOperation({
+    summary: 'So khớp khuôn mặt và lưu ảnh selfie lên Cloudinary',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -146,11 +167,13 @@ export class KycController {
       },
     },
   })
-  @UseInterceptors(FilesInterceptor('files', 2, {
-    storage: imageMemoryStorage,
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: imageFilter,
-  }))
+  @UseInterceptors(
+    FilesInterceptor('files', 2, {
+      storage: imageMemoryStorage,
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: imageFilter,
+    }),
+  )
   async matchFaces(
     @Request() req,
     @UploadedFiles() files: Express.Multer.File[],
@@ -167,7 +190,10 @@ export class KycController {
     );
 
     // 1. So khớp khuôn mặt (từ buffer trong RAM)
-    const result = await this.localKycService.matchFaces(idImage.buffer, selfieImage.buffer);
+    const result = await this.localKycService.matchFaces(
+      idImage.buffer,
+      selfieImage.buffer,
+    );
 
     // 2. Tính perceptual hash của selfie (để phát hiện trùng mặt xuyên tài khoản)
     const selfieHash = result.isMatch
@@ -183,16 +209,28 @@ export class KycController {
           userId,
           'selfie',
         );
-        this.logger.log(`[KYC Step 2] ✅ Selfie uploaded to Cloudinary: ${selfieUrl}`);
+        this.logger.log(
+          `[KYC Step 2] ✅ Selfie uploaded to Cloudinary: ${selfieUrl}`,
+        );
       } catch (uploadErr) {
-        this.logger.error(`[KYC Step 2] ❌ Cloudinary selfie upload failed: ${uploadErr.message}`);
+        this.logger.error(
+          `[KYC Step 2] ❌ Cloudinary selfie upload failed: ${uploadErr.message}`,
+        );
       }
     }
 
     // 4. Lưu kết quả face match + URL selfie + selfie hash
     if (userId) {
-      await this.kycService.saveFaceMatchResult(userId, result.similarity, result.isMatch, selfieUrl, selfieHash);
-      this.logger.log(`[KYC Step 2] Face match ${result.isMatch ? 'PASSED ✅' : 'FAILED ❌'} for user ${userId} (${result.similarity.toFixed(1)}%)`);
+      await this.kycService.saveFaceMatchResult(
+        userId,
+        result.similarity,
+        result.isMatch,
+        selfieUrl,
+        selfieHash,
+      );
+      this.logger.log(
+        `[KYC Step 2] Face match ${result.isMatch ? 'PASSED ✅' : 'FAILED ❌'} for user ${userId} (${result.similarity.toFixed(1)}%)`,
+      );
     }
 
     return {
@@ -214,7 +252,9 @@ export class KycController {
     const userId = req.user?._id?.toString() || req.user?.id;
 
     if (!userId) {
-      throw new BadRequestException('Không xác định được user. Vui lòng đăng nhập lại.');
+      throw new BadRequestException(
+        'Không xác định được user. Vui lòng đăng nhập lại.',
+      );
     }
 
     const currentStatus = await this.kycService.getKYCStatus(userId);
@@ -229,7 +269,9 @@ export class KycController {
       throw new BadRequestException(hint);
     }
 
-    this.logger.log(`KYC Step 3: Completing KYC for user ${userId} (current: ${currentStatus.status})`);
+    this.logger.log(
+      `KYC Step 3: Completing KYC for user ${userId} (current: ${currentStatus.status})`,
+    );
     return this.kycService.completeKYC(userId);
   }
 
@@ -258,7 +300,9 @@ export class KycController {
   @ApiBearerAuth()
   @UseGuards(RoleGuard)
   @Roles(ROLE_ENUM.ADMIN, ROLE_ENUM.SUPER_ADMIN)
-  @ApiOperation({ summary: '[Admin] Lấy chi tiết KYC record đầy đủ (ảnh + OCR data)' })
+  @ApiOperation({
+    summary: '[Admin] Lấy chi tiết KYC record đầy đủ (ảnh + OCR data)',
+  })
   @ApiParam({ name: 'targetId', description: 'ID người dùng cần xem KYC' })
   async getKYCDetails(@Param('targetId') userId: string) {
     return this.kycService.getKYCDetails(userId);
@@ -286,11 +330,16 @@ export class KycController {
     @Body('reason') reason: string,
   ) {
     if (!reason?.trim()) {
-      throw new BadRequestException('Vui lòng nhập lý do yêu cầu xác minh lại.');
+      throw new BadRequestException(
+        'Vui lòng nhập lý do yêu cầu xác minh lại.',
+      );
     }
 
     const adminId = req.user?._id?.toString() || req.user?.id;
-    return this.kycService.requireReverify(targetUserId, reason.trim(), adminId);
+    return this.kycService.requireReverify(
+      targetUserId,
+      reason.trim(),
+      adminId,
+    );
   }
-
 }

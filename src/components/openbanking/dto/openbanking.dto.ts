@@ -51,27 +51,42 @@ export interface BankTransaction {
 
 // ===== DTOs for VietQR =====
 export class GenerateQRDto {
-  @ApiProperty({ description: 'Mã ngân hàng (VietQR bank code)', example: 'VCB' })
+  @ApiProperty({
+    description: 'Mã ngân hàng (VietQR bank code)',
+    example: 'VCB',
+  })
   @IsString()
   @IsNotEmpty()
   bankCode: string;
 
-  @ApiProperty({ description: 'Số tài khoản người nhận', example: '0011001234567' })
+  @ApiProperty({
+    description: 'Số tài khoản người nhận',
+    example: '0011001234567',
+  })
   @IsString()
   @IsNotEmpty()
   accountNumber: string;
 
-  @ApiPropertyOptional({ description: 'Tên tài khoản người nhận', example: 'NGUYEN VAN A' })
+  @ApiPropertyOptional({
+    description: 'Tên tài khoản người nhận',
+    example: 'NGUYEN VAN A',
+  })
   @IsString()
   @IsOptional()
   accountName?: string;
 
-  @ApiPropertyOptional({ description: 'Số tiền cần chuyển (VND)', example: 1000000 })
+  @ApiPropertyOptional({
+    description: 'Số tiền cần chuyển (VND)',
+    example: 1000000,
+  })
   @IsNumber()
   @IsOptional()
   amount?: number;
 
-  @ApiPropertyOptional({ description: 'Nội dung chuyển khoản', example: 'Thanh toan khoan vay #123' })
+  @ApiPropertyOptional({
+    description: 'Nội dung chuyển khoản',
+    example: 'Thanh toan khoan vay #123',
+  })
   @IsString()
   @IsOptional()
   description?: string;

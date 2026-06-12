@@ -1,4 +1,10 @@
-import { IsArray, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
+import {
+  IsArray,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AdminSendNotificationDto {
@@ -7,7 +13,9 @@ export class AdminSendNotificationDto {
   @IsNotEmpty()
   title: string;
 
-  @ApiProperty({ example: 'Hệ thống sẽ bảo trì vào lúc 2:00 AM ngày 01/07/2025' })
+  @ApiProperty({
+    example: 'Hệ thống sẽ bảo trì vào lúc 2:00 AM ngày 01/07/2025',
+  })
   @IsString()
   @IsNotEmpty()
   message: string;

@@ -5,8 +5,8 @@ export type DeviceTokenDocument = DeviceToken & Document;
 
 export enum DevicePlatformEnum {
   ANDROID = 'ANDROID',
-  IOS     = 'IOS',
-  WEB     = 'WEB',
+  IOS = 'IOS',
+  WEB = 'WEB',
 }
 
 @Schema({ timestamps: true })
@@ -17,7 +17,11 @@ export class DeviceToken {
   @Prop({ required: true })
   token: string;
 
-  @Prop({ type: String, enum: Object.values(DevicePlatformEnum), default: DevicePlatformEnum.ANDROID })
+  @Prop({
+    type: String,
+    enum: Object.values(DevicePlatformEnum),
+    default: DevicePlatformEnum.ANDROID,
+  })
   platform: string;
 
   @Prop({ default: '' })

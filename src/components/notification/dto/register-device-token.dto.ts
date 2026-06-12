@@ -8,7 +8,10 @@ export class RegisterDeviceTokenDto {
   @IsNotEmpty()
   token: string;
 
-  @ApiProperty({ enum: DevicePlatformEnum, example: DevicePlatformEnum.ANDROID })
+  @ApiProperty({
+    enum: DevicePlatformEnum,
+    example: DevicePlatformEnum.ANDROID,
+  })
   @IsEnum(DevicePlatformEnum)
   platform: DevicePlatformEnum;
 

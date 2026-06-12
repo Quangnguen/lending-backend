@@ -1,10 +1,16 @@
-import { Controller, Get, Post, Body, Param, Query, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Request,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { MockOpenBankingService } from './mock-openbanking.service';
 import { VietQRService } from '../vietqr.service';
 import {
-  LinkBankDto,
-  VerifyOtpDto,
   GenerateQRDto,
   GenerateQRResponseDto,
   BankConnectionResponse,
@@ -22,7 +28,10 @@ export class MockOpenBankingController {
 
   @Get('banks')
   @ApiOperation({ summary: 'Lấy danh sách ngân hàng từ VietQR API' })
-  @ApiResponse({ status: 200, description: 'Danh sách ngân hàng hỗ trợ chuyển khoản VietQR' })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách ngân hàng hỗ trợ chuyển khoản VietQR',
+  })
   async getBanks() {
     return this.vietqrService.getBanks();
   }
@@ -56,7 +65,9 @@ export class MockOpenBankingController {
   // ===== Mock Link Bank Flow =====
 
   @Post('link')
-  @ApiOperation({ summary: 'Bước 1: Yêu cầu liên kết ngân hàng (nhập STK + Tên)' })
+  @ApiOperation({
+    summary: 'Bước 1: Yêu cầu liên kết ngân hàng (nhập STK + Tên)',
+  })
   @ApiResponse({ status: 201, type: BankConnectionResponse })
   async initiateLink(@Body() dto: any): Promise<BankConnectionResponse> {
     // ValidationPipe wraps body into { request, responseError }
@@ -68,7 +79,10 @@ export class MockOpenBankingController {
   @Post('verify')
   @ApiOperation({ summary: 'Bước 2: Xác thực OTP (Demo: 123456)' })
   @ApiResponse({ status: 201, type: BankConnectionResponse })
-  async verifyOtp(@Body() dto: any, @Request() req): Promise<BankConnectionResponse> {
+  async verifyOtp(
+    @Body() dto: any,
+    @Request() req,
+  ): Promise<BankConnectionResponse> {
     // ValidationPipe wraps body into { request, responseError }
     const data = dto.request || dto;
     // Lấy userId từ global AuthenGuard để persist vào MongoDB
@@ -91,7 +105,9 @@ export class MockOpenBankingController {
   }
 
   @Get('credit-score/:username')
-  @ApiOperation({ summary: 'Tính điểm tín dụng dựa trên dữ liệu ngân hàng (mock)' })
+  @ApiOperation({
+    summary: 'Tính điểm tín dụng dựa trên dữ liệu ngân hàng (mock)',
+  })
   async getCreditScore(@Param('username') username: string) {
     return this.mockService.calculateCreditScore(username);
   }

@@ -88,7 +88,9 @@ export class AuthController {
 
     // FIX HIGH-6: Truyền raw token để service blacklist vào Redis
     const authHeader = req.headers?.authorization as string | undefined;
-    const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    const rawToken = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : undefined;
 
     return await this.authService.logout(request, rawToken);
   }
@@ -167,10 +169,7 @@ export class AuthController {
     description: 'Liên kết ví blockchain với tài khoản',
   })
   @ApiResponse({ status: 200, description: 'Success' })
-  async updateWallet(
-    @Request() req,
-    @Body() body: { walletAddress: string },
-  ) {
+  async updateWallet(@Request() req, @Body() body: { walletAddress: string }) {
     return await this.authService.updateWallet(req.user, body.walletAddress);
   }
 
@@ -222,7 +221,8 @@ export class AuthController {
   @ApiOperation({
     tags: ['Auth'],
     summary: 'Đặt lại mật khẩu bằng OTP',
-    description: 'Bước 2 của luồng quên mật khẩu: nhập OTP nhận qua email + mật khẩu mới',
+    description:
+      'Bước 2 của luồng quên mật khẩu: nhập OTP nhận qua email + mật khẩu mới',
   })
   @ApiResponse({ status: 200, description: 'Đặt lại mật khẩu thành công' })
   async resetPassword(@Body() payload: ResetPasswordRequestDto) {

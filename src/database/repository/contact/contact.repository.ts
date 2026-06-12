@@ -160,7 +160,12 @@ export class ContactRepository
     }
 
     const pipeline: any[] = [
-      { $match: { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }], ...filterObj } },
+      {
+        $match: {
+          $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+          ...filterObj,
+        },
+      },
       { $sort: sortObj },
     ];
 
@@ -174,9 +179,9 @@ export class ContactRepository
       !isExport
         ? this.contactModel
             .countDocuments({
-            $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
-            ...filterObj,
-          })
+              $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+              ...filterObj,
+            })
             .exec()
         : 0,
     ]);

@@ -76,7 +76,8 @@ export class UserRepository
     if (data.avatarUrl !== undefined) entity.avatarUrl = data.avatarUrl;
     if (data.phone !== undefined) entity.phone = data.phone;
     if (data.gender !== undefined) entity.gender = data.gender;
-    if (data.walletAddress !== undefined) entity.walletAddress = data.walletAddress;
+    if (data.walletAddress !== undefined)
+      entity.walletAddress = data.walletAddress;
 
     return entity;
   }
@@ -331,7 +332,11 @@ export class UserRepository
 
   async getSummaryUsers(): Promise<{ role: string; count: number }[]> {
     const summary = await this.userModel.aggregate([
-      { $match: { $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] } },
+      {
+        $match: {
+          $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+        },
+      },
       {
         $group: {
           _id: '$role',
@@ -483,18 +488,30 @@ export class UserRepository
 
   // ==================== Search Methods ====================
   async findByEmail(email: string): Promise<User | null> {
-    return this.userModel.findOne({ email, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
+    return this.userModel.findOne({
+      email,
+      $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+    });
   }
 
   async findByPhone(phone: string): Promise<User | null> {
-    return this.userModel.findOne({ phone, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
+    return this.userModel.findOne({
+      phone,
+      $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+    });
   }
 
   async findByWalletAddress(walletAddress: string): Promise<User | null> {
-    return this.userModel.findOne({ walletAddress, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
+    return this.userModel.findOne({
+      walletAddress,
+      $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+    });
   }
 
   async findByIdCardNumber(idCardNumber: string): Promise<User | null> {
-    return this.userModel.findOne({ idCardNumber, $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }] });
+    return this.userModel.findOne({
+      idCardNumber,
+      $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+    });
   }
 }

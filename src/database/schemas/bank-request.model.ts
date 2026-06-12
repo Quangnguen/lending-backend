@@ -107,5 +107,3 @@ export type LoanRequestDocument = LoanRequest & mongoose.Document;
 
 LoanRequestSchema.set('toJSON', { getters: true });
 LoanRequestSchema.set('toObject', { getters: true });
-
-

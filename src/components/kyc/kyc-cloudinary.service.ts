@@ -27,20 +27,24 @@ export class KycCloudinaryService {
 
       const upload = cloudinary.uploader.upload_stream(
         {
-          folder: undefined,          // publicId đã chứa folder path
-          public_id: publicId,        // Ghi đè ảnh cũ cùng loại (Re-KYC)
+          folder: undefined, // publicId đã chứa folder path
+          public_id: publicId, // Ghi đè ảnh cũ cùng loại (Re-KYC)
           overwrite: true,
           resource_type: 'image',
-          type: 'authenticated',      // Private — không thể truy cập công khai
-          invalidate: true,           // Xóa cache CDN của ảnh cũ
+          type: 'authenticated', // Private — không thể truy cập công khai
+          invalidate: true, // Xóa cache CDN của ảnh cũ
           tags: ['kyc', userId, type],
         },
         (error, result: UploadApiResponse) => {
           if (error) {
-            this.logger.error(`[KYC Cloudinary] Upload failed for ${userId}/${type}: ${error.message}`);
+            this.logger.error(
+              `[KYC Cloudinary] Upload failed for ${userId}/${type}: ${error.message}`,
+            );
             return reject(error);
           }
-          this.logger.log(`[KYC Cloudinary] ✅ Uploaded ${type} for user ${userId}: ${result.public_id}`);
+          this.logger.log(
+            `[KYC Cloudinary] ✅ Uploaded ${type} for user ${userId}: ${result.public_id}`,
+          );
           resolve(result.secure_url);
         },
       );
@@ -59,7 +63,9 @@ export class KycCloudinaryService {
       await cloudinary.uploader.destroy(publicId, { type: 'authenticated' });
       this.logger.log(`[KYC Cloudinary] Deleted ${publicId}`);
     } catch (err) {
-      this.logger.warn(`[KYC Cloudinary] Failed to delete ${userId}/${type}: ${err.message}`);
+      this.logger.warn(
+        `[KYC Cloudinary] Failed to delete ${userId}/${type}: ${err.message}`,
+      );
     }
   }
 

@@ -1,7 +1,16 @@
-import { Injectable, Logger, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { KycRecord, KycRecordDocument, KYC_STEP_STATUS } from '@database/schemas/kyc-record.model';
+import {
+  KycRecord,
+  KycRecordDocument,
+  KYC_STEP_STATUS,
+} from '@database/schemas/kyc-record.model';
 import { User, UserDocument } from '@database/schemas/user.model';
 import { encrypt, decrypt } from '@core/utils/encryption.util';
 import { KycCloudinaryService } from './kyc-cloudinary.service';
@@ -35,10 +44,7 @@ export class KycService {
     // để tránh bỏ sót khi data được migrate hoặc tạo trước khi có hook mã hoá
     const existing = await this.kycRecordModel
       .findOne({
-        $or: [
-          { 'idInfo.id': cccdNumber },
-          { 'idInfo.id': encryptedCccd },
-        ],
+        $or: [{ 'idInfo.id': cccdNumber }, { 'idInfo.id': encryptedCccd }],
         userId: { $ne: new Types.ObjectId(currentUserId) },
       })
       .select('userId status')
@@ -130,7 +136,9 @@ export class KycService {
       {
         $set: {
           faceMatchScore: similarity,
-          status: isMatch ? KYC_STEP_STATUS.FACE_VERIFIED : KYC_STEP_STATUS.REJECTED,
+          status: isMatch
+            ? KYC_STEP_STATUS.FACE_VERIFIED
+            : KYC_STEP_STATUS.REJECTED,
           ...(selfieImageUrl ? { selfieImageUrl } : {}),
           ...(selfieHash && isMatch ? { selfieHash } : {}),
           ...(isMatch
@@ -142,14 +150,19 @@ export class KycService {
       { upsert: true, new: true },
     );
 
-    this.logger.log(`[KYC] Face match saved for user ${userId}: ${similarity}%`);
+    this.logger.log(
+      `[KYC] Face match saved for user ${userId}: ${similarity}%`,
+    );
     return record;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Kiểm tra khuôn mặt trùng lặp xuyên tài khoản (Hamming distance ≤ 8/64)
   // ─────────────────────────────────────────────────────────────────────────
-  private async checkDuplicateFace(selfieHash: string, currentUserId: string): Promise<void> {
+  private async checkDuplicateFace(
+    selfieHash: string,
+    currentUserId: string,
+  ): Promise<void> {
     if (!selfieHash || selfieHash.length < 16) return;
 
     // Lấy tất cả KYC records của user khác đã có selfieHash
@@ -157,21 +170,26 @@ export class KycService {
       .find({
         userId: { $ne: new Types.ObjectId(currentUserId) },
         selfieHash: { $exists: true, $ne: '' },
-        status: { $in: [KYC_STEP_STATUS.FACE_VERIFIED, KYC_STEP_STATUS.COMPLETED] },
+        status: {
+          $in: [KYC_STEP_STATUS.FACE_VERIFIED, KYC_STEP_STATUS.COMPLETED],
+        },
       })
       .select('userId selfieHash')
       .lean();
 
     const HAMMING_THRESHOLD = 8; // Tối đa 8/64 bit khác nhau = rất giống nhau
     for (const record of others) {
-      const dist = this._hammingDistance(selfieHash, record.selfieHash as string);
+      const dist = this._hammingDistance(
+        selfieHash,
+        record.selfieHash as string,
+      );
       if (dist <= HAMMING_THRESHOLD) {
         this.logger.warn(
           `[KYC] ⛔ Duplicate face: user ${currentUserId} vs userId ${record.userId} (hamming=${dist})`,
         );
         throw new ConflictException(
           'Khuôn mặt này đã được đăng ký bởi một tài khoản khác. ' +
-          'Mỗi người chỉ được tạo một tài khoản. Vui lòng liên hệ hỗ trợ nếu có nhầm lẫn.',
+            'Mỗi người chỉ được tạo một tài khoản. Vui lòng liên hệ hỗ trợ nếu có nhầm lẫn.',
         );
       }
     }
@@ -182,7 +200,10 @@ export class KycService {
     let dist = 0;
     for (let i = 0; i < a.length; i++) {
       let xor = parseInt(a[i], 16) ^ parseInt(b[i], 16);
-      while (xor) { dist += xor & 1; xor >>= 1; }
+      while (xor) {
+        dist += xor & 1;
+        xor >>= 1;
+      }
     }
     return dist;
   }
@@ -244,7 +265,9 @@ export class KycService {
         },
       });
     } catch (e: any) {
-      this.logger.error(`Failed to sync KYC status to User model: ${e?.message}`);
+      this.logger.error(
+        `Failed to sync KYC status to User model: ${e?.message}`,
+      );
     }
 
     this.logger.log(`[KYC] ✅ Completed for user ${userId}`);
@@ -303,12 +326,16 @@ export class KycService {
   // Admin: Lấy chi tiết KYC record đầy đủ (bao gồm ảnh)
   // ─────────────────────────────────────────────────────────────────────────
   async getKYCDetails(userId: string) {
-    const record = await this.kycRecordModel
-      .findOne({ userId: new Types.ObjectId(userId) });
+    const record = await this.kycRecordModel.findOne({
+      userId: new Types.ObjectId(userId),
+    });
 
     // BUG-3 FIX: ảnh được lưu với type 'authenticated' trên Cloudinary —
     // cần tạo signed URL mới mỗi lần truy cập thay vì trả raw URL
-    const signedUrl = (type: 'id_front' | 'id_back' | 'selfie', exists: boolean) =>
+    const signedUrl = (
+      type: 'id_front' | 'id_back' | 'selfie',
+      exists: boolean,
+    ) =>
       exists ? this.kycCloudinaryService.generateSignedUrl(userId, type) : null;
 
     return {
@@ -328,8 +355,9 @@ export class KycService {
   // Query: Lấy trạng thái KYC (cho mobile app)
   // ─────────────────────────────────────────────────────────────────────────
   async getKYCStatus(userId: string) {
-    const record = await this.kycRecordModel
-      .findOne({ userId: new Types.ObjectId(userId) });
+    const record = await this.kycRecordModel.findOne({
+      userId: new Types.ObjectId(userId),
+    });
 
     return {
       status: record?.status || KYC_STEP_STATUS.NOT_STARTED,
@@ -339,5 +367,4 @@ export class KycService {
       reKycReason: record?.reKycReason || null,
     };
   }
-
 }
